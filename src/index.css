@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/* ── Dark mode (default) ───────────────────────────────── */
+:root {
+  --bg: #141211;
+  --fg: #f5f0eb;
+  --card: #1c1a18;
+  --card-fg: #f5f0eb;
+  --muted: #292524;
+  --muted-fg: #a8a29e;
+  --border: #33302e;
+  --input: #33302e;
+  --ring: #e8845a;
+
+  --primary: #e8845a;
+  --primary-fg: #1c1917;
+  --primary-light: rgba(232, 132, 90, 0.12);
+
+  --secondary: #292524;
+  --secondary-fg: #d6d3d1;
+
+  --accent: #e8845a;
+  --accent-fg: #1c1917;
+
+  --destructive: #ef4444;
+  --destructive-fg: #ffffff;
+
+  --success: #4ade80;
+  --success-fg: #052e16;
+
+  --warning: #fbbf24;
+  --warning-fg: #422006;
+
+  color-scheme: dark;
+}
+
+/* ── Light mode ────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg: #faf9f7;
+  --fg: #1c1917;
+  --card: #ffffff;
+  --card-fg: #1c1917;
+  --muted: #f0ece7;
+  --muted-fg: #78716c;
+  --border: #e7e5e4;
+  --input: #e7e5e4;
+  --ring: #e8845a;
+
+  --primary: #d9723e;
+  --primary-fg: #ffffff;
+  --primary-light: rgba(232, 132, 90, 0.10);
+
+  --secondary: #f0ece7;
+  --secondary-fg: #44403c;
+
+  --accent: #d9723e;
+  --accent-fg: #ffffff;
+
+  --destructive: #dc2626;
+  --destructive-fg: #ffffff;
+
+  --success: #16a34a;
+  --success-fg: #ffffff;
+
+  --warning: #d97706;
+  --warning-fg: #ffffff;
+
+  color-scheme: light;
+}
+
+/* ── Tailwind v4 theme tokens ──────────────────────────── */
+@theme {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-fg);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-fg);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-fg);
+  --color-primary-light: var(--primary-light);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-fg);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-fg);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-fg);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-fg);
+
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-fg);
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    margin: 0;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  /* Smooth theme transitions */
+  body,
+  .transition-theme {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+
+  /* Range input accent color */
+  input[type="range"] {
+    accent-color: var(--primary);
+  }
+
+  /* Select styling for dark mode */
+  select {
+    color-scheme: inherit;
+  }
+}
