@@ -75,12 +75,12 @@ export function Scenarios() {
       <div className="space-y-6">
         <div>
           <h1 className="font-display text-3xl">What-If Scenarios</h1>
-          <p className="text-muted-foreground mt-1">Adjust the sliders and see how different choices affect your path.</p>
+          <p className="text-muted-foreground mt-1">See what a little more fuel does.</p>
         </div>
         <EmptyState
           icon={<SlidersHorizontal className="h-8 w-8 text-primary" />}
-          title="Add debts first to model scenarios"
-          description="Once you've added your debts and income, you can explore what happens when you pay extra, get a raise, or apply a lump sum."
+          title="Add debts first"
+          description="Once you've added your debts and income, you can see what happens when you throw more fuel on the fire."
         />
       </div>
     )
@@ -91,7 +91,7 @@ export function Scenarios() {
       <div>
         <h1 className="font-display text-3xl">What-If Scenarios</h1>
         <p className="text-muted-foreground mt-1">
-          Adjust the sliders and see how different choices affect your path.
+          See what a little more fuel does.
         </p>
       </div>
 
@@ -160,7 +160,7 @@ export function Scenarios() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Income Change</CardTitle>
-            <CardDescription>Raise, new side gig, or lost income</CardDescription>
+            <CardDescription>More fuel — or less</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <input
@@ -185,7 +185,7 @@ export function Scenarios() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">One-Time Lump Sum</CardTitle>
-            <CardDescription>Tax refund, bonus, or windfall applied to a single debt</CardDescription>
+            <CardDescription>Tax refund, bonus, or windfall. A burst of flame on one debt.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -235,7 +235,7 @@ export function Scenarios() {
       <Card>
         <CardHeader>
           <CardTitle>Baseline vs. Scenario</CardTitle>
-          <CardDescription>See how your changes shift the trajectory</CardDescription>
+          <CardDescription>See how extra fuel shifts the timeline</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-80">

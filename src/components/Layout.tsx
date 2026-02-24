@@ -38,7 +38,7 @@ export function Layout() {
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:w-[220px] lg:flex-col lg:fixed lg:inset-y-0 border-r border-border bg-card">
         <div className="flex flex-col flex-1 p-5">
-          <h1 className="font-display text-2xl text-primary mb-8 tracking-tight">Clearpath</h1>
+          <h1 className="font-display text-2xl text-primary mb-8 tracking-tight">Ember</h1>
           <nav className="flex flex-col gap-1 flex-1">
             {navItems.map(({ to, icon: Icon, label }) => (
               <NavLink
@@ -84,7 +84,7 @@ export function Layout() {
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 inset-x-0 z-50 bg-card border-b border-border">
         <div className="flex items-center justify-between px-4 h-14">
-          <h1 className="font-display text-xl text-primary">Clearpath</h1>
+          <h1 className="font-display text-xl text-primary">Ember</h1>
           <div className="flex items-center gap-2">
             <button onClick={toggleTheme} className="cursor-pointer p-1.5 text-muted-foreground hover:text-foreground">
               {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

@@ -39,7 +39,7 @@ export function Income() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-3xl">Income</h1>
-          <p className="text-muted-foreground mt-1">Track what comes in.</p>
+          <p className="text-muted-foreground mt-1">Track your fuel.</p>
         </div>
         {incomeSources.length > 0 && (
           <Button onClick={openAdd}>
@@ -61,7 +61,7 @@ export function Income() {
         <EmptyState
           icon={<DollarSign className="h-8 w-8 text-success" />}
           title="No income sources yet"
-          description="Add your paychecks, freelance gigs, or any recurring income so we can calculate your cash flow."
+          description="Add your paychecks, freelance gigs, or any recurring income. This is what feeds the fire."
           actionLabel="Add Income Source"
           onAction={openAdd}
         />

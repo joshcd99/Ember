@@ -66,8 +66,8 @@ export function Dashboard() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-3xl text-foreground">Welcome to Clearpath</h1>
-          <p className="text-muted-foreground mt-1">Let's set up your path to being debt-free.</p>
+          <h1 className="font-display text-3xl text-foreground">Welcome to Ember</h1>
+          <p className="text-muted-foreground mt-1">Let's see what you're working with.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -76,7 +76,7 @@ export function Dashboard() {
               <CreditCard className="h-8 w-8 text-primary mx-auto" />
               <h3 className="font-semibold">Add your debts</h3>
               <p className="text-sm text-muted-foreground">
-                Credit cards, loans, anything with a balance. This is the starting point.
+                Credit cards, loans, anything with a balance. This is where the fire starts.
               </p>
               <Link to="/debts">
                 <Button size="sm">Get started</Button>
@@ -89,7 +89,7 @@ export function Dashboard() {
               <DollarSign className="h-8 w-8 text-success mx-auto" />
               <h3 className="font-semibold">Add your income</h3>
               <p className="text-sm text-muted-foreground">
-                Paychecks, freelance, side gigs. So we know what you're working with.
+                Paychecks, freelance, side gigs. The fuel for your fire.
               </p>
               <Link to="/income">
                 <Button size="sm" variant="outline">Add income</Button>
@@ -102,7 +102,7 @@ export function Dashboard() {
               <Receipt className="h-8 w-8 text-muted-foreground mx-auto" />
               <h3 className="font-semibold">Add your bills</h3>
               <p className="text-sm text-muted-foreground">
-                Rent, utilities, subscriptions. The things you pay every month.
+                Rent, utilities, subscriptions. We'll make sure these don't smother the flame.
               </p>
               <Link to="/bills">
                 <Button size="sm" variant="outline">Add bills</Button>
@@ -119,7 +119,7 @@ export function Dashboard() {
       {/* Header */}
       <div>
         <h1 className="font-display text-3xl text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Here's your clear path forward.</p>
+        <p className="text-muted-foreground mt-1">The ember's still lit.</p>
       </div>
 
       {/* Hero action card */}
@@ -255,7 +255,7 @@ export function Dashboard() {
                 <Link to="/bills" className="text-primary hover:underline">Add your bills</Link> to see what's coming up.
               </p>
             ) : upcomingBills.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No bills due in the next 7 days.</p>
+              <p className="text-sm text-muted-foreground">All clear for the next 7 days.</p>
             ) : (
               <div className="space-y-3">
                 {upcomingBills.map(bill => (
@@ -289,7 +289,7 @@ export function Dashboard() {
             <Link to="/checkin">
               <Button variant="outline" className="w-full justify-start gap-3">
                 <span className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">+</span>
-                Log a payment or expense
+                Feed the flame
               </Button>
             </Link>
             <Link to="/scenarios">
@@ -297,7 +297,7 @@ export function Dashboard() {
                 <span className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                   <SlidersHorizontal className="h-4 w-4 text-primary" />
                 </span>
-                Run a what-if scenario
+                See what a little more fuel does
               </Button>
             </Link>
             <Link to="/debts">
@@ -305,7 +305,7 @@ export function Dashboard() {
                 <span className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                   <TrendingDown className="h-4 w-4 text-primary" />
                 </span>
-                Compare payoff strategies
+                Compare burn strategies
               </Button>
             </Link>
           </CardContent>

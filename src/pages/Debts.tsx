@@ -39,19 +39,19 @@ const CHART_COLORS = {
 const strategyMeta: Record<Strategy, { label: string; description: string; icon: React.ReactNode; color: string }> = {
   avalanche: {
     label: "Avalanche",
-    description: "Highest interest rate first. Saves the most money.",
+    description: "Highest interest rate first. Maximum burn.",
     icon: <TrendingDown className="h-5 w-5" />,
     color: CHART_COLORS.avalanche,
   },
   snowball: {
     label: "Snowball",
-    description: "Lowest balance first. Quick wins for motivation.",
+    description: "Lowest balance first. Quick wins to keep the flame alive.",
     icon: <Snowflake className="h-5 w-5" />,
     color: CHART_COLORS.snowball,
   },
   minimums: {
     label: "Minimums Only",
-    description: "Pay only what's required. Baseline comparison.",
+    description: "Pay only what's required. A slow smolder.",
     icon: <MinusCircle className="h-5 w-5" />,
     color: CHART_COLORS.minimums,
   },
@@ -83,13 +83,13 @@ export function Debts() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-3xl">Debts & Payoff Strategy</h1>
-            <p className="text-muted-foreground mt-1">Compare strategies and pick the one that works for you.</p>
+            <p className="text-muted-foreground mt-1">Compare strategies and pick the one that burns fastest.</p>
           </div>
         </div>
         <EmptyState
           icon={<CreditCard className="h-8 w-8 text-primary" />}
-          title="Add your first debt"
-          description="Credit cards, student loans, car payments — add them here to see your payoff plan come together."
+          title="No debts added yet"
+          description="Credit cards, student loans, car payments — add them here and let's start burning them down."
           actionLabel="Add Debt"
           onAction={openAdd}
         />
@@ -138,7 +138,7 @@ export function Debts() {
         <div>
           <h1 className="font-display text-3xl">Debts & Payoff Strategy</h1>
           <p className="text-muted-foreground mt-1">
-            Compare strategies and pick the one that works for you.
+            Compare strategies and pick the one that burns fastest.
           </p>
         </div>
         <Button onClick={openAdd}>
@@ -192,11 +192,11 @@ export function Debts() {
         <h2 className="text-lg font-semibold mb-4">Strategy Comparison</h2>
         {incomeSources.length > 0 ? (
           <p className="text-sm text-muted-foreground mb-4">
-            Assuming {formatCurrency(extraMonthly)}/mo extra toward debt (50% of your available cash flow).
+            Throwing {formatCurrency(extraMonthly)}/mo of extra fuel at your debt.
           </p>
         ) : (
           <p className="text-sm text-muted-foreground mb-4">
-            Add income sources and bills to see projections with extra payments factored in.
+            Add income and bills to see what happens when you add more fuel.
           </p>
         )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

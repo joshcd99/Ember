@@ -66,7 +66,7 @@ export function Settings() {
             <div>
               <p className="text-sm font-medium">Email</p>
               <p className="text-sm text-muted-foreground">
-                {useMockMode ? "demo@clearpath.app" : user?.email ?? "Not signed in"}
+                {useMockMode ? "demo@ember.app" : user?.email ?? "Not signed in"}
               </p>
             </div>
             {useMockMode && <Badge variant="warning">Demo Mode</Badge>}

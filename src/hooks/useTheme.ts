@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 
 type Theme = "dark" | "light"
 
-const STORAGE_KEY = "clearpath-theme"
+const STORAGE_KEY = "ember-theme"
 
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "dark"

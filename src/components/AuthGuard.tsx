@@ -34,9 +34,9 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
         <div className="w-full max-w-sm space-y-8">
           <div className="text-center">
-            <h1 className="font-display text-4xl text-primary mb-2">Clearpath</h1>
+            <h1 className="font-display text-4xl text-primary mb-2">Ember</h1>
             <p className="text-muted-foreground">
-              A calm, clear path out of debt.
+              Stop burning your money.
             </p>
           </div>
 

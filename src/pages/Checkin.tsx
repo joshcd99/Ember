@@ -77,7 +77,7 @@ export function Checkin() {
     <div className="space-y-6 max-w-lg mx-auto">
       <div className="text-center">
         <h1 className="font-display text-3xl">Daily Check-in</h1>
-        <p className="text-muted-foreground mt-1">Quick and easy. Every day counts.</p>
+        <p className="text-muted-foreground mt-1">Quick and easy. Keep the ember going.</p>
       </div>
 
       {/* Streak */}
@@ -86,7 +86,7 @@ export function Checkin() {
           <Flame className="h-10 w-10 text-warning mx-auto mb-2" />
           <p className="text-3xl font-bold">{streak} day streak</p>
           <p className="text-sm text-muted-foreground mt-1">
-            {streak === 0 ? "Start your streak today!" : "Keep it going!"}
+            {streak === 0 ? "Light the match." : "Still burning. Keep it going!"}
           </p>
         </CardContent>
       </Card>
@@ -96,7 +96,7 @@ export function Checkin() {
         <Card className="border-success/30 bg-success/5 text-center">
           <CardContent className="py-4">
             <CheckCircle2 className="h-6 w-6 text-success mx-auto mb-1" />
-            <p className="text-sm font-medium text-success">You've already checked in today</p>
+            <p className="text-sm font-medium text-success">Already checked in today. The ember's still lit.</p>
           </CardContent>
         </Card>
       )}
@@ -220,9 +220,9 @@ export function Checkin() {
         <Card className="text-center">
           <CardContent className="py-8">
             <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
-            <h2 className="text-xl font-semibold mb-1">Logged!</h2>
+            <h2 className="text-xl font-semibold mb-1">Feeding the flame.</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              {amount ? `${formatCurrency(Number(amount))} — ${label}` : "Check-in recorded, nothing to log."}
+              {amount ? `${formatCurrency(Number(amount))} — ${label}` : "Still burning. Nothing to log today."}
             </p>
             <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={reset}>
