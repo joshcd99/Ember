@@ -79,17 +79,7 @@ export function Scenarios() {
 
   // Savings projections
   const hasSavings = savingsAccount && savingsAccount.current_balance > 0
-  const savingsBaselineMonthlyNet = monthlyIncome + incomeChange - monthlyBillsTotal - monthlyMinimums - currentExtra
   const savingsScenarioMonthlyNet = monthlyIncome + incomeChange - monthlyBillsTotal - monthlyMinimums - scenarioExtra
-
-  const savingsBaseline = useMemo(() => {
-    if (!savingsAccount) return null
-    return projectSavings({
-      startingBalance: savingsAccount.current_balance,
-      monthlyNet: savingsBaselineMonthlyNet,
-      apy: savingsAccount.apy,
-    })
-  }, [savingsAccount, savingsBaselineMonthlyNet])
 
   const savingsScenario = useMemo(() => {
     if (!savingsAccount) return null
