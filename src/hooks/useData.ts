@@ -114,9 +114,16 @@ export function useData(): AppData {
     fetchAll()
   }, [fetchAll])
 
+  // --- Mock helpers ---
+  let mockIdCounter = 100
+  const mockId = () => `mock-${++mockIdCounter}`
+
   // --- Debt CRUD ---
   const addDebt = async (debt: Omit<Debt, "id" | "household_id" | "created_at" | "last_verified_at">) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, debts: [...s.debts, { ...debt, id: mockId(), household_id: "mock-household", created_at: new Date().toISOString(), last_verified_at: null }] }))
+      return
+    }
     const { error } = await supabase.from("debts").insert({
       ...debt,
       household_id: householdId!,
@@ -127,14 +134,20 @@ export function useData(): AppData {
   }
 
   const updateDebt = async (id: string, updates: Partial<Debt>) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, debts: s.debts.map(d => d.id === id ? { ...d, ...updates } : d) }))
+      return
+    }
     const { error } = await supabase.from("debts").update(updates).eq("id", id)
     if (error) throw error
     await fetchAll()
   }
 
   const deleteDebt = async (id: string) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, debts: s.debts.filter(d => d.id !== id) }))
+      return
+    }
     const { error } = await supabase.from("debts").delete().eq("id", id)
     if (error) throw error
     await fetchAll()
@@ -142,7 +155,10 @@ export function useData(): AppData {
 
   // --- Income Source CRUD ---
   const addIncomeSource = async (source: Omit<IncomeSource, "id" | "household_id">) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, incomeSources: [...s.incomeSources, { ...source, id: mockId(), household_id: "mock-household" }] }))
+      return
+    }
     const { error } = await supabase.from("income_sources").insert({
       ...source,
       household_id: householdId!,
@@ -152,14 +168,20 @@ export function useData(): AppData {
   }
 
   const updateIncomeSource = async (id: string, updates: Partial<IncomeSource>) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, incomeSources: s.incomeSources.map(i => i.id === id ? { ...i, ...updates } : i) }))
+      return
+    }
     const { error } = await supabase.from("income_sources").update(updates).eq("id", id)
     if (error) throw error
     await fetchAll()
   }
 
   const deleteIncomeSource = async (id: string) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, incomeSources: s.incomeSources.filter(i => i.id !== id) }))
+      return
+    }
     const { error } = await supabase.from("income_sources").delete().eq("id", id)
     if (error) throw error
     await fetchAll()
@@ -167,7 +189,10 @@ export function useData(): AppData {
 
   // --- Bill CRUD ---
   const addBill = async (bill: Omit<Bill, "id" | "household_id">) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, bills: [...s.bills, { ...bill, id: mockId(), household_id: "mock-household" }] }))
+      return
+    }
     const { error } = await supabase.from("bills").insert({
       ...bill,
       household_id: householdId!,
@@ -177,14 +202,20 @@ export function useData(): AppData {
   }
 
   const updateBill = async (id: string, updates: Partial<Bill>) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, bills: s.bills.map(b => b.id === id ? { ...b, ...updates } : b) }))
+      return
+    }
     const { error } = await supabase.from("bills").update(updates).eq("id", id)
     if (error) throw error
     await fetchAll()
   }
 
   const deleteBill = async (id: string) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, bills: s.bills.filter(b => b.id !== id) }))
+      return
+    }
     const { error } = await supabase.from("bills").delete().eq("id", id)
     if (error) throw error
     await fetchAll()
@@ -192,7 +223,10 @@ export function useData(): AppData {
 
   // --- Transaction ---
   const addTransaction = async (tx: Omit<Transaction, "id" | "user_id" | "household_id">) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({ ...s, transactions: [{ ...tx, id: mockId(), user_id: "mock", household_id: "mock-household" }, ...s.transactions] }))
+      return
+    }
     const { error } = await supabase.from("transactions").insert({
       ...tx,
       user_id: user!.id,
@@ -204,7 +238,15 @@ export function useData(): AppData {
 
   // --- Savings ---
   const updateSavingsAccount = async (updates: Partial<Pick<SavingsAccount, "current_balance" | "apy">>) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      setState(s => ({
+        ...s,
+        savingsAccount: s.savingsAccount
+          ? { ...s.savingsAccount, ...updates, last_verified_at: new Date().toISOString() }
+          : null,
+      }))
+      return
+    }
     const { error } = await supabase
       .from("savings_accounts")
       .update({ ...updates, last_verified_at: new Date().toISOString() })
@@ -215,7 +257,17 @@ export function useData(): AppData {
 
   // --- Checkin ---
   const logCheckin = async (date?: string) => {
-    if (useMockMode) return
+    if (useMockMode) {
+      const today = date ?? new Date().toISOString().split("T")[0]
+      const exists = state.checkins.some(c => c.date === today)
+      if (!exists) {
+        setState(s => ({
+          ...s,
+          checkins: [{ id: mockId(), user_id: "mock", household_id: "mock-household", date: today, completed_at: new Date().toISOString() }, ...s.checkins],
+        }))
+      }
+      return
+    }
     const today = date ?? new Date().toISOString().split("T")[0]
     const { error } = await supabase.from("checkins").upsert(
       {
