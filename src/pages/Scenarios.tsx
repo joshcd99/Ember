@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/EmptyState"
@@ -88,9 +88,7 @@ export function Scenarios() {
   const monthlyBillsTotal = getMonthlyBills(bills)
   const monthlyMinimums = getMonthlyMinimums(debts)
   const hasDebts = debts.length > 0
-  const currentExtra = hasDebts
-    ? Math.max(0, Math.floor((monthlyIncome - monthlyBillsTotal - monthlyMinimums) * 0.5))
-    : 0
+  const currentExtra = 0 // baseline assumes only minimums are paid
   const maxExtra = hasDebts
     ? Math.max(0, Math.floor(monthlyIncome - monthlyBillsTotal - monthlyMinimums))
     : 0
@@ -106,16 +104,6 @@ export function Scenarios() {
     setExtraSlider(val)
   }, [debouncedExtraText, maxExtra])
 
-  // Initialize slider to currentExtra when data first loads
-  const extraInitialized = useRef(false)
-  useEffect(() => {
-    if (!loading && !extraInitialized.current && hasDebts) {
-      extraInitialized.current = true
-      setExtraSlider(currentExtra)
-      setExtraText(String(currentExtra))
-    }
-  }, [loading, currentExtra, hasDebts])
-
   // --- State: Income change (slider <-> text sync) ---
   const [incomeSlider, setIncomeSlider] = useState(0)
   const [incomeText, setIncomeText] = useState("0")
@@ -125,6 +113,9 @@ export function Scenarios() {
     const val = Math.max(-1000, Math.min(2000, Number(debouncedIncomeText) || 0))
     setIncomeSlider(val)
   }, [debouncedIncomeText])
+
+  // --- State: Income split (% of income change allocated to debt) ---
+  const [debtSplitPct, setDebtSplitPct] = useState(50)
 
   // --- State: Lump sum ---
   const [lumpSumAmountText, setLumpSumAmountText] = useState("")
@@ -157,8 +148,8 @@ export function Scenarios() {
 
   // --- Computed scenario values ---
   const scenarioExtra = useMemo(
-    () => Math.max(0, extraSlider + Math.floor(incomeSlider * 0.5)),
-    [extraSlider, incomeSlider]
+    () => Math.max(0, extraSlider + Math.floor(incomeSlider * debtSplitPct / 100)),
+    [extraSlider, incomeSlider, debtSplitPct]
   )
 
   const lumpSumEngineMonth = useMemo(
@@ -460,6 +451,29 @@ export function Scenarios() {
                   />
                 </div>
               </div>
+
+              {/* Split ratio */}
+              {hasDebts && (
+                <div className="mt-3">
+                  <label className="text-sm font-medium">Allocate income change</label>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-xs text-muted-foreground w-14 shrink-0">Savings</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={debtSplitPct}
+                      onChange={e => setDebtSplitPct(Number(e.target.value))}
+                      className="flex-1"
+                    />
+                    <span className="text-xs text-muted-foreground w-8 shrink-0 text-right">Debt</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 text-center">
+                    {debtSplitPct}% to debt · {100 - debtSplitPct}% to savings
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* 3. One-time lump sum */}
