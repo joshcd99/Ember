@@ -1,4 +1,4 @@
-import type { Debt, IncomeSource, Bill, Transaction, Checkin } from "@/types/database"
+import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount } from "@/types/database"
 
 export const mockDebts: Debt[] = [
   {
@@ -96,6 +96,14 @@ export const mockCheckins: Checkin[] = [
   { id: "6", user_id: "mock", household_id: "mock-household", date: "2026-02-19", completed_at: "2026-02-19T08:00:00Z" },
   { id: "7", user_id: "mock", household_id: "mock-household", date: "2026-02-18", completed_at: "2026-02-18T10:30:00Z" },
 ]
+
+export const mockSavingsAccount: SavingsAccount = {
+  id: "mock-savings",
+  household_id: "mock-household",
+  current_balance: 2500,
+  apy: 0.045,
+  last_verified_at: "2026-02-20T00:00:00Z",
+}
 
 export function getTotalDebt(debts: Debt[]): number {
   return debts.reduce((sum, d) => sum + d.current_balance, 0)

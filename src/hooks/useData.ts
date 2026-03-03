@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
-import type { Debt, IncomeSource, Bill, Transaction, Checkin } from "@/types/database"
+import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount } from "@/types/database"
 import {
   mockDebts,
   mockIncomeSources,
   mockBills,
   mockTransactions,
   mockCheckins,
+  mockSavingsAccount,
 } from "@/lib/mock-data"
 
 interface DataState {
@@ -16,6 +17,7 @@ interface DataState {
   bills: Bill[]
   transactions: Transaction[]
   checkins: Checkin[]
+  savingsAccount: SavingsAccount | null
   loading: boolean
 }
 
@@ -36,6 +38,8 @@ interface DataActions {
   addTransaction: (tx: Omit<Transaction, "id" | "user_id" | "household_id">) => Promise<void>
   // Checkins
   logCheckin: (date?: string) => Promise<void>
+  // Savings
+  updateSavingsAccount: (updates: Partial<Pick<SavingsAccount, "current_balance" | "apy">>) => Promise<void>
   // Refresh
   refresh: () => Promise<void>
 }
@@ -50,6 +54,7 @@ export function useData(): AppData {
     bills: [],
     transactions: [],
     checkins: [],
+    savingsAccount: null,
     loading: true,
   })
 
@@ -61,6 +66,7 @@ export function useData(): AppData {
         bills: mockBills,
         transactions: mockTransactions,
         checkins: mockCheckins,
+        savingsAccount: mockSavingsAccount,
         loading: false,
       })
       return
@@ -73,13 +79,25 @@ export function useData(): AppData {
 
     setState(s => ({ ...s, loading: true }))
 
-    const [debtsRes, incomeRes, billsRes, txRes, checkinsRes] = await Promise.all([
+    const [debtsRes, incomeRes, billsRes, txRes, checkinsRes, savingsRes] = await Promise.all([
       supabase.from("debts").select("*").order("created_at", { ascending: true }),
       supabase.from("income_sources").select("*").order("name"),
       supabase.from("bills").select("*").order("next_due_date"),
       supabase.from("transactions").select("*").order("date", { ascending: false }).limit(100),
       supabase.from("checkins").select("*").order("date", { ascending: false }).limit(60),
+      supabase.from("savings_accounts").select("*").eq("household_id", householdId).maybeSingle(),
     ])
+
+    // Auto-create savings account if none exists
+    let savingsAccount = savingsRes.data as SavingsAccount | null
+    if (!savingsAccount) {
+      const { data: created } = await supabase
+        .from("savings_accounts")
+        .upsert({ household_id: householdId!, current_balance: 0, apy: 0 }, { onConflict: "household_id" })
+        .select()
+        .single()
+      savingsAccount = (created as SavingsAccount) ?? null
+    }
 
     setState({
       debts: (debtsRes.data as Debt[]) ?? [],
@@ -87,6 +105,7 @@ export function useData(): AppData {
       bills: (billsRes.data as Bill[]) ?? [],
       transactions: (txRes.data as Transaction[]) ?? [],
       checkins: (checkinsRes.data as Checkin[]) ?? [],
+      savingsAccount,
       loading: false,
     })
   }, [user, useMockMode, householdId])
@@ -183,6 +202,17 @@ export function useData(): AppData {
     await fetchAll()
   }
 
+  // --- Savings ---
+  const updateSavingsAccount = async (updates: Partial<Pick<SavingsAccount, "current_balance" | "apy">>) => {
+    if (useMockMode) return
+    const { error } = await supabase
+      .from("savings_accounts")
+      .update({ ...updates, last_verified_at: new Date().toISOString() })
+      .eq("household_id", householdId!)
+    if (error) throw error
+    await fetchAll()
+  }
+
   // --- Checkin ---
   const logCheckin = async (date?: string) => {
     if (useMockMode) return
@@ -213,6 +243,7 @@ export function useData(): AppData {
     deleteBill,
     addTransaction,
     logCheckin,
+    updateSavingsAccount,
     refresh: fetchAll,
   }
 }

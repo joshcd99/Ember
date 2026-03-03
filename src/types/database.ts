@@ -70,6 +70,14 @@ export interface Checkin {
   completed_at: string | null
 }
 
+export interface SavingsAccount {
+  id: string
+  household_id: string
+  current_balance: number
+  apy: number
+  last_verified_at: string | null
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -222,6 +230,24 @@ export interface Database {
           household_id?: string
           date?: string
           completed_at?: string | null
+        }
+        Relationships: []
+      }
+      savings_accounts: {
+        Row: SavingsAccount
+        Insert: {
+          id?: string
+          household_id: string
+          current_balance?: number
+          apy?: number
+          last_verified_at?: string | null
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          current_balance?: number
+          apy?: number
+          last_verified_at?: string | null
         }
         Relationships: []
       }
