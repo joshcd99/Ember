@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { useState, useMemo, useEffect, useRef } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/EmptyState"
 import {
@@ -9,144 +9,349 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
+  ReferenceLine,
   ResponsiveContainer,
 } from "recharts"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { calculatePayoff } from "@/lib/payoff-engine"
 import { projectSavings } from "@/lib/savings-engine"
-import { formatCurrency, formatDate } from "@/lib/utils"
-import { TrendingDown, Calendar, DollarSign, SlidersHorizontal, PiggyBank, ShoppingBag } from "lucide-react"
+import { formatCurrency, cn } from "@/lib/utils"
+import { SlidersHorizontal } from "lucide-react"
 
-const CHART_COLORS = {
-  baseline: "#a8a29e",
-  scenario: "#e8845a",
-  savings: "#4ade80",
-  savingsNoInterest: "#a8a29e",
-  purchaseBaseline: "#4ade80",
-  purchaseScenario: "#fbbf24",
+// --- Constants ---
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+const FULL_MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+const YEAR_OPTIONS = [2025, 2026, 2027, 2028, 2029]
+
+const TIMEFRAMES = [
+  { key: "full" as const, label: "Full" },
+  { key: "6mo" as const, label: "6 Mo" },
+  { key: "1yr" as const, label: "1 Yr" },
+  { key: "3yr" as const, label: "3 Yr" },
+  { key: "custom" as const, label: "Custom" },
+]
+
+type Timeframe = "full" | "6mo" | "1yr" | "3yr" | "custom"
+
+// --- Inline useDebounce ---
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => { const t = setTimeout(() => setDebounced(value), delay); return () => clearTimeout(t) }, [value, delay])
+  return debounced
 }
+
+// --- Chart data types ---
+
+interface ChartDataPoint {
+  calendarMonth: string
+  label: string
+  debtPast: number | null
+  debtBaselineFuture: number | null
+  debtScenarioFuture: number | null
+  savingsBaselineFuture: number | null
+  savingsScenarioFuture: number | null
+  savingsNoInterestFuture: number | null
+}
+
+// --- Helpers ---
+
+function absMonthToCalendar(absMonth: number): { calendarMonth: string; label: string } {
+  const year = Math.floor(absMonth / 12)
+  const month = absMonth % 12
+  return {
+    calendarMonth: `${year}-${String(month + 1).padStart(2, "0")}`,
+    label: `${MONTH_NAMES[month]} ${year}`,
+  }
+}
+
+function calendarToAbsMonth(calendarMonth: string): number {
+  const [y, m] = calendarMonth.split("-").map(Number)
+  return y * 12 + (m - 1)
+}
+
+// --- Component ---
 
 export function Scenarios() {
   const { debts, incomeSources, bills, savingsAccount, loading } = useAppData()
 
+  const now = new Date()
+  const nowYear = now.getFullYear()
+  const nowMonth = now.getMonth() // 0-indexed
+  const nowAbsMonth = nowYear * 12 + nowMonth
+  const todayCalendarMonth = `${nowYear}-${String(nowMonth + 1).padStart(2, "0")}`
+
+  // --- Derived financial values ---
   const monthlyIncome = getMonthlyIncome(incomeSources)
   const monthlyBillsTotal = getMonthlyBills(bills)
   const monthlyMinimums = getMonthlyMinimums(debts)
-  const currentExtra = Math.max(0, Math.floor((monthlyIncome - monthlyBillsTotal - monthlyMinimums) * 0.5))
-  const maxExtra = Math.max(0, Math.floor(monthlyIncome - monthlyBillsTotal - monthlyMinimums))
+  const hasDebts = debts.length > 0
+  const currentExtra = hasDebts
+    ? Math.max(0, Math.floor((monthlyIncome - monthlyBillsTotal - monthlyMinimums) * 0.5))
+    : 0
+  const maxExtra = hasDebts
+    ? Math.max(0, Math.floor(monthlyIncome - monthlyBillsTotal - monthlyMinimums))
+    : 0
 
-  const [extraMonthly, setExtraMonthly] = useState(currentExtra)
-  const [lumpSumAmount, setLumpSumAmount] = useState(0)
+  // --- State: Extra monthly payment (slider <-> text sync) ---
+  const [extraSlider, setExtraSlider] = useState(0)
+  const [extraText, setExtraText] = useState("0")
+  const debouncedExtraText = useDebounce(extraText, 300)
+
+  // Sync debounced text -> slider
+  useEffect(() => {
+    const val = Math.max(0, Math.min(maxExtra || 1000, Number(debouncedExtraText) || 0))
+    setExtraSlider(val)
+  }, [debouncedExtraText, maxExtra])
+
+  // Initialize slider to currentExtra when data first loads
+  const extraInitialized = useRef(false)
+  useEffect(() => {
+    if (!loading && !extraInitialized.current && hasDebts) {
+      extraInitialized.current = true
+      setExtraSlider(currentExtra)
+      setExtraText(String(currentExtra))
+    }
+  }, [loading, currentExtra, hasDebts])
+
+  // --- State: Income change (slider <-> text sync) ---
+  const [incomeSlider, setIncomeSlider] = useState(0)
+  const [incomeText, setIncomeText] = useState("0")
+  const debouncedIncomeText = useDebounce(incomeText, 300)
+
+  useEffect(() => {
+    const val = Math.max(-1000, Math.min(2000, Number(debouncedIncomeText) || 0))
+    setIncomeSlider(val)
+  }, [debouncedIncomeText])
+
+  // --- State: Lump sum ---
+  const [lumpSumAmountText, setLumpSumAmountText] = useState("")
+  const debouncedLumpSum = useDebounce(lumpSumAmountText, 300)
+  const lumpSumAmount = Math.max(0, Number(debouncedLumpSum) || 0)
   const [lumpSumDebtId, setLumpSumDebtId] = useState(debts[0]?.id ?? "")
-  const [lumpSumMonth, setLumpSumMonth] = useState(1)
-  const [incomeChange, setIncomeChange] = useState(0)
-  const [purchaseAmount, setPurchaseAmount] = useState(0)
-  const [purchaseMonth, setPurchaseMonth] = useState(6)
+  const [lumpSumMonth, setLumpSumMonth] = useState(nowMonth)
+  const [lumpSumYear, setLumpSumYear] = useState(nowYear)
 
+  // --- State: Purchase ---
+  const [purchaseAmountText, setPurchaseAmountText] = useState("")
+  const debouncedPurchase = useDebounce(purchaseAmountText, 300)
+  const purchaseAmount = Math.max(0, Number(debouncedPurchase) || 0)
+  const [purchaseMonth, setPurchaseMonth] = useState(nowMonth)
+  const [purchaseYear, setPurchaseYear] = useState(nowYear)
+
+  // --- State: Timeframe ---
+  const [timeframe, setTimeframe] = useState<Timeframe>("3yr")
+  const [customStartMonth, setCustomStartMonth] = useState(nowMonth)
+  const [customStartYear, setCustomStartYear] = useState(nowYear)
+  const [customEndMonth, setCustomEndMonth] = useState((nowMonth + 6) % 12)
+  const [customEndYear, setCustomEndYear] = useState(nowYear + (nowMonth + 6 >= 12 ? 1 : 0))
+
+  // Sync lumpSumDebtId when debts change
+  useEffect(() => {
+    if (debts.length > 0 && !debts.find(d => d.id === lumpSumDebtId)) {
+      setLumpSumDebtId(debts[0].id)
+    }
+  }, [debts, lumpSumDebtId])
+
+  // --- Computed scenario values ---
+  const scenarioExtra = useMemo(
+    () => Math.max(0, extraSlider + Math.floor(incomeSlider * 0.5)),
+    [extraSlider, incomeSlider]
+  )
+
+  const lumpSumEngineMonth = useMemo(
+    () => Math.max(1, (lumpSumYear * 12 + lumpSumMonth) - (nowYear * 12 + nowMonth)),
+    [lumpSumMonth, lumpSumYear, nowYear, nowMonth]
+  )
+
+  const purchaseEngineMonth = useMemo(
+    () => Math.max(1, (purchaseYear * 12 + purchaseMonth) - (nowYear * 12 + nowMonth)),
+    [purchaseMonth, purchaseYear, nowYear, nowMonth]
+  )
+
+  // --- Engine calculations ---
+
+  // Step 1: Historical debt projection
+  const historicalResult = useMemo(() => {
+    if (!hasDebts) return null
+    const earliestMs = debts.reduce((min, d) => {
+      const t = new Date(d.created_at).getTime()
+      return t < min ? t : min
+    }, Infinity)
+    const earliestDate = new Date(earliestMs)
+    const earliestAbsMonth = earliestDate.getFullYear() * 12 + earliestDate.getMonth()
+
+    const historicalDebts = debts.map(d => ({ ...d, current_balance: d.starting_balance }))
+    const result = calculatePayoff(historicalDebts, "avalanche", currentExtra)
+    return { result, earliestAbsMonth }
+  }, [debts, currentExtra, hasDebts])
+
+  // Step 2: Forward projections
   const baseline = useMemo(
     () => calculatePayoff(debts, "avalanche", currentExtra),
     [debts, currentExtra]
   )
 
-  const scenarioExtra = useMemo(
-    () => Math.max(0, extraMonthly + Math.floor(incomeChange * 0.5)),
-    [extraMonthly, incomeChange]
-  )
-
   const scenario = useMemo(() => {
-    const lumpSum = lumpSumAmount > 0
-      ? { amount: lumpSumAmount, debtId: lumpSumDebtId, month: lumpSumMonth }
+    const lumpSum = lumpSumAmount > 0 && lumpSumDebtId
+      ? { amount: lumpSumAmount, debtId: lumpSumDebtId, month: lumpSumEngineMonth }
       : null
     return calculatePayoff(debts, "avalanche", scenarioExtra, lumpSum)
-  }, [debts, scenarioExtra, lumpSumAmount, lumpSumDebtId, lumpSumMonth])
+  }, [debts, scenarioExtra, lumpSumAmount, lumpSumDebtId, lumpSumEngineMonth])
 
-  const monthsSaved = baseline.months - scenario.months
-  const interestSaved = baseline.totalInterest - scenario.totalInterest
+  const hasSavings = !!(savingsAccount && savingsAccount.current_balance > 0)
 
-  // Debt chart data
-  const maxMonths = Math.max(baseline.months, scenario.months)
-  const step = Math.max(1, Math.floor(maxMonths / 40))
-  const chartData = []
-  for (let m = 0; m <= maxMonths; m += step) {
-    chartData.push({
-      month: m,
-      Baseline: baseline.timeline[m]?.totalBalance ?? 0,
-      Scenario: scenario.timeline[m]?.totalBalance ?? 0,
-    })
-  }
+  const baselineMonthlyNet = monthlyIncome - monthlyBillsTotal - monthlyMinimums - currentExtra
+  const scenarioMonthlyNet = monthlyIncome + incomeSlider - monthlyBillsTotal - monthlyMinimums - scenarioExtra
 
-  // Savings projections
-  const hasSavings = savingsAccount && savingsAccount.current_balance > 0
-  const savingsScenarioMonthlyNet = monthlyIncome + incomeChange - monthlyBillsTotal - monthlyMinimums - scenarioExtra
-
-  const savingsScenario = useMemo(() => {
+  const savingsBaseline = useMemo(() => {
     if (!savingsAccount) return null
     return projectSavings({
       startingBalance: savingsAccount.current_balance,
-      monthlyNet: savingsScenarioMonthlyNet,
+      monthlyNet: baselineMonthlyNet,
       apy: savingsAccount.apy,
+      months: 36,
     })
-  }, [savingsAccount, savingsScenarioMonthlyNet])
+  }, [savingsAccount, baselineMonthlyNet])
 
-  const savingsPurchaseScenario = useMemo(() => {
-    if (!savingsAccount || purchaseAmount <= 0) return null
+  const savingsScenario = useMemo(() => {
+    if (!savingsAccount) return null
+    const purchase = purchaseAmount > 0 ? { amount: purchaseAmount, month: purchaseEngineMonth } : null
     return projectSavings({
       startingBalance: savingsAccount.current_balance,
-      monthlyNet: savingsScenarioMonthlyNet,
+      monthlyNet: scenarioMonthlyNet,
       apy: savingsAccount.apy,
-      purchase: { amount: purchaseAmount, month: purchaseMonth },
+      months: 36,
+      purchase,
     })
-  }, [savingsAccount, savingsScenarioMonthlyNet, purchaseAmount, purchaseMonth])
+  }, [savingsAccount, scenarioMonthlyNet, purchaseAmount, purchaseEngineMonth])
 
-  // Savings chart data
-  const savingsChartData = useMemo(() => {
-    if (!savingsScenario) return []
-    const data = []
-    for (let m = 0; m <= 36; m++) {
-      data.push({
-        month: m,
-        Projected: savingsScenario.timeline[m]?.balance ?? 0,
-        "Without Interest": savingsScenario.timeline[m]?.balanceNoInterest ?? 0,
+  // Step 3: Build unified chart data
+  const chartData = useMemo(() => {
+    let startAbs = nowAbsMonth - 6
+    let endAbs = nowAbsMonth + 36
+
+    if (hasDebts && historicalResult) {
+      startAbs = Math.min(startAbs, historicalResult.earliestAbsMonth)
+      endAbs = Math.max(endAbs, nowAbsMonth + baseline.months, nowAbsMonth + scenario.months)
+    }
+
+    const points: ChartDataPoint[] = []
+
+    for (let abs = startAbs; abs <= endAbs; abs++) {
+      const { calendarMonth, label } = absMonthToCalendar(abs)
+      const isPast = abs < nowAbsMonth
+      const isToday = abs === nowAbsMonth
+      const isFuture = abs > nowAbsMonth
+      const futureOffset = abs - nowAbsMonth
+
+      // Historical debt
+      let debtPast: number | null = null
+      if (hasDebts && historicalResult && (isPast || isToday)) {
+        const histOffset = abs - historicalResult.earliestAbsMonth
+        if (histOffset >= 0 && histOffset < historicalResult.result.timeline.length) {
+          debtPast = historicalResult.result.timeline[histOffset].totalBalance
+        }
+      }
+
+      // Future debt
+      let debtBaselineFuture: number | null = null
+      let debtScenarioFuture: number | null = null
+      if (hasDebts && (isFuture || isToday) && futureOffset >= 0) {
+        if (futureOffset < baseline.timeline.length) {
+          debtBaselineFuture = baseline.timeline[futureOffset].totalBalance
+        }
+        if (futureOffset < scenario.timeline.length) {
+          debtScenarioFuture = scenario.timeline[futureOffset].totalBalance
+        }
+      }
+
+      // Future savings
+      let savingsBaselineFuture: number | null = null
+      let savingsScenarioFuture: number | null = null
+      let savingsNoInterestFuture: number | null = null
+      if ((isFuture || isToday) && futureOffset >= 0) {
+        if (savingsBaseline && futureOffset < savingsBaseline.timeline.length) {
+          savingsBaselineFuture = savingsBaseline.timeline[futureOffset].balance
+        }
+        if (savingsScenario && futureOffset < savingsScenario.timeline.length) {
+          savingsScenarioFuture = savingsScenario.timeline[futureOffset].balance
+        }
+        if (savingsScenario && savingsAccount && savingsAccount.apy > 0 && futureOffset < savingsScenario.timeline.length) {
+          savingsNoInterestFuture = savingsScenario.timeline[futureOffset].balanceNoInterest
+        }
+      }
+
+      points.push({
+        calendarMonth, label,
+        debtPast,
+        debtBaselineFuture, debtScenarioFuture,
+        savingsBaselineFuture, savingsScenarioFuture, savingsNoInterestFuture,
       })
     }
-    return data
-  }, [savingsScenario])
 
-  // Purchase chart data
-  const purchaseChartData = useMemo(() => {
-    if (!savingsScenario || !savingsPurchaseScenario) return []
-    const data = []
-    for (let m = 0; m <= 36; m++) {
-      data.push({
-        month: m,
-        Baseline: savingsScenario.timeline[m]?.balance ?? 0,
-        "After Purchase": savingsPurchaseScenario.timeline[m]?.balance ?? 0,
-      })
+    // Downsample to ~60 points, always keeping the today boundary
+    if (points.length > 60) {
+      const todayIdx = points.findIndex(p => p.calendarMonth === todayCalendarMonth)
+      const step = Math.ceil(points.length / 60)
+      const sampled: ChartDataPoint[] = []
+      for (let i = 0; i < points.length; i++) {
+        if (i % step === 0 || i === todayIdx || i === points.length - 1) {
+          sampled.push(points[i])
+        }
+      }
+      return sampled
     }
-    return data
-  }, [savingsScenario, savingsPurchaseScenario])
 
-  // Purchase impact calculation
-  const purchaseCost = useMemo(() => {
-    if (!savingsScenario || !savingsPurchaseScenario) return { total: 0, at12: 0, at36: 0 }
-    const baseAt36 = savingsScenario.timeline[36]?.balance ?? 0
-    const purchaseAt36 = savingsPurchaseScenario.timeline[36]?.balance ?? 0
-    const baseAt12 = savingsScenario.timeline[12]?.balance ?? 0
-    const purchaseAt12 = savingsPurchaseScenario.timeline[12]?.balance ?? 0
-    return {
-      total: Math.round((baseAt36 - purchaseAt36) * 100) / 100,
-      at12: Math.round((baseAt12 - purchaseAt12) * 100) / 100,
-      at36: Math.round((baseAt36 - purchaseAt36) * 100) / 100,
+    return points
+  }, [hasDebts, historicalResult, baseline, scenario, savingsBaseline, savingsScenario, savingsAccount, nowAbsMonth, todayCalendarMonth])
+
+  // Step 4: Timeframe filtering
+  const filteredChartData = useMemo(() => {
+    let startAbs: number, endAbs: number
+    switch (timeframe) {
+      case "full":
+        return chartData
+      case "6mo":
+        startAbs = nowAbsMonth - 3; endAbs = nowAbsMonth + 6; break
+      case "1yr":
+        startAbs = nowAbsMonth - 6; endAbs = nowAbsMonth + 12; break
+      case "3yr":
+        startAbs = nowAbsMonth - 6; endAbs = nowAbsMonth + 36; break
+      case "custom":
+        startAbs = customStartYear * 12 + customStartMonth
+        endAbs = customEndYear * 12 + customEndMonth
+        break
     }
-  }, [savingsScenario, savingsPurchaseScenario])
+    return chartData.filter(p => {
+      const abs = calendarToAbsMonth(p.calendarMonth)
+      return abs >= startAbs && abs <= endAbs
+    })
+  }, [chartData, timeframe, nowAbsMonth, customStartMonth, customStartYear, customEndMonth, customEndYear])
+
+  // --- Summary stats ---
+  const debtFreeDate = hasDebts ? scenario.payoffDate : null
+  const interestSaved = hasDebts ? baseline.totalInterest - scenario.totalInterest : null
+  const savingsAtDebtFree = useMemo(() => {
+    if (!savingsScenario || !hasDebts) return null
+    const idx = Math.min(scenario.months, savingsScenario.timeline.length - 1)
+    return savingsScenario.timeline[idx]?.balance ?? null
+  }, [savingsScenario, scenario, hasDebts])
+
+  // Which line groups are visible in the filtered data
+  const hasDebtData = filteredChartData.some(p => p.debtPast !== null || p.debtScenarioFuture !== null)
+  const hasSavingsData = filteredChartData.some(p => p.savingsScenarioFuture !== null)
+  const hasNoInterestData = filteredChartData.some(p => p.savingsNoInterestFuture !== null)
+
+  // --- Render ---
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading...</div>
   }
 
-  if (debts.length === 0 && !hasSavings) {
+  if (!hasDebts && !hasSavings) {
     return (
       <div className="space-y-6">
         <div>
@@ -162,133 +367,120 @@ export function Scenarios() {
     )
   }
 
+  const xTickFormatter = (value: string) => {
+    const [y, m] = value.split("-").map(Number)
+    return `${MONTH_NAMES[m - 1]} '${String(y).slice(2)}`
+  }
+
+  const yFormatter = (v: number) => `$${(v / 1000).toFixed(0)}k`
+
+  const tooltipLabelNames: Record<string, string> = {
+    debtPast: "Debt (history)",
+    debtBaselineFuture: "Debt (baseline)",
+    debtScenarioFuture: "Debt (scenario)",
+    savingsBaselineFuture: "Savings (baseline)",
+    savingsScenarioFuture: "Savings (scenario)",
+    savingsNoInterestFuture: "Savings (no interest)",
+  }
+
+  const selectClass = "flex h-10 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground"
+  const smallSelectClass = "h-9 rounded-lg border border-input bg-card px-2 py-1 text-sm text-foreground"
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl">What-If Scenarios</h1>
-        <p className="text-muted-foreground mt-1">
-          See what a little more fuel does.
-        </p>
+        <p className="text-muted-foreground mt-1">See what a little more fuel does.</p>
       </div>
 
-      {/* Impact summary — only show if debts exist */}
-      {debts.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className={monthsSaved > 0 ? "border-success/30 bg-success/5" : ""}>
-            <CardContent className="flex items-center gap-3 py-5">
-              <Calendar className="h-8 w-8 text-success" />
-              <div>
-                <p className="text-sm text-muted-foreground">Months saved</p>
-                <p className="text-2xl font-bold">
-                  {monthsSaved > 0 ? monthsSaved : monthsSaved === 0 ? "—" : `+${Math.abs(monthsSaved)}`}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={interestSaved > 0 ? "border-success/30 bg-success/5" : ""}>
-            <CardContent className="flex items-center gap-3 py-5">
-              <DollarSign className="h-8 w-8 text-success" />
-              <div>
-                <p className="text-sm text-muted-foreground">Interest saved</p>
-                <p className="text-2xl font-bold">
-                  {interestSaved > 0 ? formatCurrency(interestSaved) : interestSaved === 0 ? "—" : `-${formatCurrency(Math.abs(interestSaved))}`}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-3 py-5">
-              <TrendingDown className="h-8 w-8 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">New debt-free date</p>
-                <p className="text-2xl font-bold">{formatDate(scenario.payoffDate)}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {debts.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Extra Monthly Payment</CardTitle>
-              <CardDescription>
-                Baseline: {formatCurrency(currentExtra)}/mo
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <input
-                type="range"
-                min={0}
-                max={maxExtra || 1000}
-                step={25}
-                value={extraMonthly}
-                onChange={e => setExtraMonthly(Number(e.target.value))}
-                className="w-full"
-              />
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">$0</span>
-                <span className="font-semibold">{formatCurrency(extraMonthly)}/mo</span>
-                <span className="text-muted-foreground">{formatCurrency(maxExtra || 1000)}</span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
+        {/* ── Left Column: Variables ── */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Income Change</CardTitle>
-            <CardDescription>More fuel — or less</CardDescription>
+            <CardTitle className="text-base">Variables</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <input
-              type="range"
-              min={-1000}
-              max={2000}
-              step={50}
-              value={incomeChange}
-              onChange={e => setIncomeChange(Number(e.target.value))}
-              className="w-full"
-            />
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">-$1,000</span>
-              <span className="font-semibold">
-                {incomeChange >= 0 ? "+" : ""}{formatCurrency(incomeChange)}/mo
-              </span>
-              <span className="text-muted-foreground">+$2,000</span>
-            </div>
-          </CardContent>
-        </Card>
+          <CardContent className="space-y-0">
+            {/* 1. Extra monthly payment */}
+            {hasDebts && (
+              <div className="pb-4">
+                <label className="text-sm font-medium">Extra monthly payment</label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Baseline: {formatCurrency(currentExtra)}/mo
+                </p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={maxExtra || 1000}
+                    step={25}
+                    value={extraSlider}
+                    onChange={e => {
+                      const v = Number(e.target.value)
+                      setExtraSlider(v)
+                      setExtraText(String(v))
+                    }}
+                    className="flex-1"
+                  />
+                  <div className="relative w-24">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                    <Input
+                      value={extraText}
+                      onChange={e => setExtraText(e.target.value)}
+                      className="pl-6 text-sm h-9"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
-        {debts.length > 0 && (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base">One-Time Lump Sum</CardTitle>
-              <CardDescription>Tax refund, bonus, or windfall. A burst of flame on one debt.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* 2. Income change */}
+            <div className={cn(hasDebts && "border-t border-border pt-4", "pb-4")}>
+              <label className="text-sm font-medium">Income change</label>
+              <p className="text-xs text-muted-foreground mb-2">More fuel — or less</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={-1000}
+                  max={2000}
+                  step={50}
+                  value={incomeSlider}
+                  onChange={e => {
+                    const v = Number(e.target.value)
+                    setIncomeSlider(v)
+                    setIncomeText(String(v))
+                  }}
+                  className="flex-1"
+                />
+                <div className="relative w-24">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    value={incomeText}
+                    onChange={e => setIncomeText(e.target.value)}
+                    className="pl-6 text-sm h-9"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. One-time lump sum */}
+            {hasDebts && (
+              <div className="border-t border-border pt-4 pb-4">
+                <label className="text-sm font-medium">One-time lump sum</label>
+                <p className="text-xs text-muted-foreground mb-2">Tax refund, bonus, or windfall</p>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Amount</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                     <Input
-                      type="number"
-                      value={lumpSumAmount || ""}
-                      onChange={e => setLumpSumAmount(Number(e.target.value))}
+                      value={lumpSumAmountText}
+                      onChange={e => setLumpSumAmountText(e.target.value)}
                       className="pl-7"
                       placeholder="0"
                     />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Apply to</label>
                   <select
                     value={lumpSumDebtId}
                     onChange={e => setLumpSumDebtId(e.target.value)}
-                    className="flex h-10 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground"
+                    className={selectClass}
                   >
                     {debts.map(d => (
                       <option key={d.id} value={d.id}>
@@ -296,264 +488,284 @@ export function Scenarios() {
                       </option>
                     ))}
                   </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={lumpSumMonth}
+                      onChange={e => setLumpSumMonth(Number(e.target.value))}
+                      className={selectClass}
+                    >
+                      {MONTH_NAMES.map((name, i) => (
+                        <option key={i} value={i}>{name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={lumpSumYear}
+                      onChange={e => setLumpSumYear(Number(e.target.value))}
+                      className={selectClass}
+                    >
+                      {YEAR_OPTIONS.map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">In month</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={lumpSumMonth}
-                    onChange={e => setLumpSumMonth(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Debt Chart */}
-      {debts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Baseline vs. Scenario</CardTitle>
-            <CardDescription>See how extra fuel shifts the timeline</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="month"
-                    label={{ value: "Months", position: "insideBottom", offset: -5 }}
-                    tick={{ fontSize: 12 }}
-                    className="fill-muted-foreground"
-                  />
-                  <YAxis
-                    tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
-                    tick={{ fontSize: 12 }}
-                    className="fill-muted-foreground"
-                  />
-                  <Tooltip
-                    formatter={(value) => formatCurrency(Number(value))}
-                    labelFormatter={(label) => `Month ${label}`}
-                    contentStyle={{
-                      backgroundColor: "var(--card)",
-                      borderColor: "var(--border)",
-                      borderRadius: "0.5rem",
-                      color: "var(--fg)",
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="Baseline"
-                    stroke={CHART_COLORS.baseline}
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="Scenario"
-                    stroke={CHART_COLORS.scenario}
-                    strokeWidth={3}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Savings Projection */}
-      {savingsAccount && (hasSavings || debts.length > 0) && savingsScenario && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PiggyBank className="h-5 w-5 text-success" />
-              Savings Projection
-            </CardTitle>
-            <CardDescription>
-              How your savings grow over the next 3 years
-              {debts.length > 0 && " — affected by how much extra goes to debt"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={savingsChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="month"
-                    label={{ value: "Months", position: "insideBottom", offset: -5 }}
-                    tick={{ fontSize: 12 }}
-                    className="fill-muted-foreground"
-                  />
-                  <YAxis
-                    tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
-                    tick={{ fontSize: 12 }}
-                    className="fill-muted-foreground"
-                  />
-                  <Tooltip
-                    formatter={(value) => formatCurrency(Number(value))}
-                    labelFormatter={(label) => `Month ${label}`}
-                    contentStyle={{
-                      backgroundColor: "var(--card)",
-                      borderColor: "var(--border)",
-                      borderRadius: "0.5rem",
-                      color: "var(--fg)",
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="Projected"
-                    stroke={CHART_COLORS.savings}
-                    strokeWidth={3}
-                    dot={false}
-                  />
-                  {savingsAccount.apy > 0 && (
-                    <Line
-                      type="monotone"
-                      dataKey="Without Interest"
-                      stroke={CHART_COLORS.savingsNoInterest}
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      dot={false}
-                    />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Milestones */}
-            {savingsScenario.milestones && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[6, 12, 24, 36].map(m => {
-                  const milestone = savingsScenario.milestones[m]
-                  if (!milestone) return null
-                  return (
-                    <div key={m} className="rounded-lg border p-3 text-center">
-                      <p className="text-xs text-muted-foreground">Month {m}</p>
-                      <p className="text-lg font-bold">{formatCurrency(milestone.balance)}</p>
-                      {savingsAccount.apy > 0 && (
-                        <p className="text-xs text-success">
-                          +{formatCurrency(milestone.balance - milestone.balanceNoInterest)} interest
-                        </p>
-                      )}
-                    </div>
-                  )
-                })}
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
 
-      {/* One-Time Purchase Impact */}
-      {savingsAccount && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShoppingBag className="h-5 w-5 text-warning" />
-              One-Time Purchase
-            </CardTitle>
-            <CardDescription>See how a big purchase impacts your savings growth</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 4. One-time purchase */}
+            <div className="border-t border-border pt-4">
+              <label className="text-sm font-medium">One-time purchase</label>
+              <p className="text-xs text-muted-foreground mb-2">See how a big buy impacts savings</p>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Amount</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                   <Input
-                    type="number"
-                    value={purchaseAmount || ""}
-                    onChange={e => setPurchaseAmount(Number(e.target.value))}
+                    value={purchaseAmountText}
+                    onChange={e => setPurchaseAmountText(e.target.value)}
                     className="pl-7"
                     placeholder="0"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">In month</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={36}
-                  value={purchaseMonth}
-                  onChange={e => setPurchaseMonth(Math.max(1, Math.min(36, Number(e.target.value))))}
-                />
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={purchaseMonth}
+                    onChange={e => setPurchaseMonth(Number(e.target.value))}
+                    className={selectClass}
+                  >
+                    {MONTH_NAMES.map((name, i) => (
+                      <option key={i} value={i}>{name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={purchaseYear}
+                    onChange={e => setPurchaseYear(Number(e.target.value))}
+                    className={selectClass}
+                  >
+                    {YEAR_OPTIONS.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
-
-            {purchaseAmount > 0 && savingsPurchaseScenario && (
-              <>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={purchaseChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis
-                        dataKey="month"
-                        label={{ value: "Months", position: "insideBottom", offset: -5 }}
-                        tick={{ fontSize: 12 }}
-                        className="fill-muted-foreground"
-                      />
-                      <YAxis
-                        tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
-                        tick={{ fontSize: 12 }}
-                        className="fill-muted-foreground"
-                      />
-                      <Tooltip
-                        formatter={(value) => formatCurrency(Number(value))}
-                        labelFormatter={(label) => `Month ${label}`}
-                        contentStyle={{
-                          backgroundColor: "var(--card)",
-                          borderColor: "var(--border)",
-                          borderRadius: "0.5rem",
-                          color: "var(--fg)",
-                        }}
-                      />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="Baseline"
-                        stroke={CHART_COLORS.purchaseBaseline}
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="After Purchase"
-                        stroke={CHART_COLORS.purchaseScenario}
-                        strokeWidth={3}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {purchaseCost.total > 0 && (
-                  <div className="rounded-lg border border-warning/30 bg-warning/5 p-4">
-                    <p className="text-sm font-medium">
-                      This purchase costs you {formatCurrency(purchaseCost.total)} in lost savings growth by month 36
-                    </p>
-                    <div className="mt-2 flex gap-6 text-sm text-muted-foreground">
-                      <span>Month 12: -{formatCurrency(purchaseCost.at12)}</span>
-                      <span>Month 36: -{formatCurrency(purchaseCost.at36)}</span>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
           </CardContent>
         </Card>
-      )}
+
+        {/* ── Right Column: Timeframe + Chart + Summary ── */}
+        <div className="space-y-4">
+          {/* Timeframe selector */}
+          <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
+            {TIMEFRAMES.map(tf => (
+              <button
+                key={tf.key}
+                onClick={() => setTimeframe(tf.key)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  timeframe === tf.key
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom range pickers */}
+          {timeframe === "custom" && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <select value={customStartMonth} onChange={e => setCustomStartMonth(Number(e.target.value))} className={smallSelectClass}>
+                {MONTH_NAMES.map((n, i) => <option key={i} value={i}>{n}</option>)}
+              </select>
+              <select value={customStartYear} onChange={e => setCustomStartYear(Number(e.target.value))} className={smallSelectClass}>
+                {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <span className="text-muted-foreground">to</span>
+              <select value={customEndMonth} onChange={e => setCustomEndMonth(Number(e.target.value))} className={smallSelectClass}>
+                {MONTH_NAMES.map((n, i) => <option key={i} value={i}>{n}</option>)}
+              </select>
+              <select value={customEndYear} onChange={e => setCustomEndYear(Number(e.target.value))} className={smallSelectClass}>
+                {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Chart */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={filteredChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis
+                      dataKey="calendarMonth"
+                      tickFormatter={xTickFormatter}
+                      interval="preserveStartEnd"
+                      tick={{ fontSize: 11 }}
+                      className="fill-muted-foreground"
+                    />
+
+                    {hasDebtData && (
+                      <YAxis
+                        yAxisId="debt"
+                        orientation="left"
+                        tickFormatter={yFormatter}
+                        tick={{ fontSize: 11 }}
+                        className="fill-muted-foreground"
+                      />
+                    )}
+                    {hasSavingsData && (
+                      <YAxis
+                        yAxisId="savings"
+                        orientation={hasDebtData ? "right" : "left"}
+                        tickFormatter={yFormatter}
+                        tick={{ fontSize: 11 }}
+                        className="fill-muted-foreground"
+                      />
+                    )}
+
+                    <ReferenceLine
+                      x={todayCalendarMonth}
+                      stroke="#a8a29e"
+                      strokeDasharray="4 4"
+                      label={{ value: "Today", position: "top", fill: "#a8a29e", fontSize: 11 }}
+                      yAxisId={hasDebtData ? "debt" : "savings"}
+                    />
+
+                    <Tooltip
+                      labelFormatter={(label) => {
+                        const [y, m] = String(label).split("-").map(Number)
+                        return `${FULL_MONTH_NAMES[m - 1]} ${y}`
+                      }}
+                      formatter={(value, name) => [
+                        formatCurrency(Number(value)),
+                        tooltipLabelNames[String(name)] ?? name,
+                      ]}
+                      contentStyle={{
+                        backgroundColor: "var(--card)",
+                        borderColor: "var(--border)",
+                        borderRadius: "0.5rem",
+                        color: "var(--fg)",
+                      }}
+                    />
+
+                    {/* Debt lines */}
+                    {hasDebtData && (
+                      <>
+                        <Line type="monotone" dataKey="debtPast" yAxisId="debt" stroke="#e8845a" strokeWidth={2} dot={false} connectNulls={false} />
+                        <Line type="monotone" dataKey="debtBaselineFuture" yAxisId="debt" stroke="#a8a29e" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                        <Line type="monotone" dataKey="debtScenarioFuture" yAxisId="debt" stroke="#e8845a" strokeWidth={3} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                      </>
+                    )}
+
+                    {/* Savings lines */}
+                    {hasSavingsData && (
+                      <>
+                        <Line type="monotone" dataKey="savingsBaselineFuture" yAxisId="savings" stroke="#a8a29e" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                        <Line type="monotone" dataKey="savingsScenarioFuture" yAxisId="savings" stroke="#4ade80" strokeWidth={3} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                        {hasNoInterestData && (
+                          <Line type="monotone" dataKey="savingsNoInterestFuture" yAxisId="savings" stroke="#78716c" strokeWidth={1.5} strokeDasharray="3 3" dot={false} connectNulls={false} />
+                        )}
+                      </>
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Custom legend */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">
+                {hasDebtData && (
+                  <>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-3 h-0.5 rounded" style={{ backgroundColor: "#e8845a" }} />
+                      Debt (history)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-3 h-0.5 rounded border-t-2 border-dashed" style={{ borderColor: "#a8a29e" }} />
+                      Debt (baseline)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-3 h-0.5 rounded border-t-2 border-dashed" style={{ borderColor: "#e8845a" }} />
+                      Debt (scenario)
+                    </span>
+                  </>
+                )}
+                {hasSavingsData && (
+                  <>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-3 h-0.5 rounded border-t-2 border-dashed" style={{ borderColor: "#a8a29e" }} />
+                      Savings (baseline)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-3 h-0.5 rounded border-t-2 border-dashed" style={{ borderColor: "#4ade80" }} />
+                      Savings (scenario)
+                    </span>
+                    {hasNoInterestData && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-3 h-0.5 rounded border-t border-dashed" style={{ borderColor: "#78716c" }} />
+                        Without interest
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Hint if debts but no savings data */}
+              {hasDebts && !hasSavingsData && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Add a savings balance in Check-in to see savings projections
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Summary Stats */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Debt-free date</p>
+                  <p className="text-lg font-bold">
+                    {debtFreeDate
+                      ? debtFreeDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+                      : "---"}
+                  </p>
+                  {hasDebts && baseline.months !== scenario.months && (
+                    <p className={cn(
+                      "text-xs",
+                      scenario.months < baseline.months ? "text-success" : "text-destructive"
+                    )}>
+                      {scenario.months < baseline.months
+                        ? `${baseline.months - scenario.months} months sooner`
+                        : `${scenario.months - baseline.months} months later`}
+                    </p>
+                  )}
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Interest saved</p>
+                  <p className={cn(
+                    "text-lg font-bold",
+                    interestSaved !== null && interestSaved > 0 && "text-success",
+                    interestSaved !== null && interestSaved < 0 && "text-destructive",
+                  )}>
+                    {interestSaved !== null
+                      ? interestSaved >= 0
+                        ? formatCurrency(interestSaved)
+                        : `-${formatCurrency(Math.abs(interestSaved))}`
+                      : "---"}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Savings at debt-free</p>
+                  <p className="text-lg font-bold">
+                    {savingsAtDebtFree !== null ? formatCurrency(savingsAtDebtFree) : "---"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
