@@ -17,7 +17,7 @@ const typeConfig: Record<TransactionType, { label: string; icon: React.ReactNode
 export function Checkin() {
   const { checkins, transactions, savingsAccount, addTransaction, logCheckin, updateSavingsAccount, loading } = useAppData()
 
-  const [step, setStep] = useState<"start" | "type" | "details" | "done">("start")
+  const [step, setStep] = useState<"start" | "type" | "details" | "savings" | "done">("start")
   const [selectedType, setSelectedType] = useState<TransactionType | null>(null)
   const [amount, setAmount] = useState("")
   const [label, setLabel] = useState("")
@@ -62,6 +62,24 @@ export function Checkin() {
       // handle error
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSavingsSubmit = async () => {
+    setSavingSavings(true)
+    try {
+      await updateSavingsAccount({
+        current_balance: savingsBalance,
+        apy: savingsApy / 100,
+      })
+      await logCheckin()
+      setStep("done")
+      setLabel("Balance check-in")
+      setAmount(String(savingsBalance))
+    } catch {
+      // handle error
+    } finally {
+      setSavingSavings(false)
     }
   }
 
@@ -157,6 +175,15 @@ export function Checkin() {
             )
           })}
           <Button
+            variant="outline"
+            size="lg"
+            className="w-full h-14 justify-start gap-4"
+            onClick={() => setStep("savings")}
+          >
+            <span className="text-success"><PiggyBank className="h-5 w-5" /></span>
+            Balance Check-in
+          </Button>
+          <Button
             variant="ghost"
             size="lg"
             className="w-full h-12 text-muted-foreground"
@@ -227,6 +254,68 @@ export function Checkin() {
         </Card>
       )}
 
+      {step === "savings" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <span className="text-success"><PiggyBank className="h-5 w-5" /></span>
+              Balance Check-in
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Savings balance</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={savingsBalance || ""}
+                  onChange={(e) => setSavingsBalance(Number(e.target.value))}
+                  className="pl-7"
+                  placeholder="0"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">APY</label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={savingsApy || ""}
+                  onChange={(e) => setSavingsApy(Number(e.target.value))}
+                  className="pr-8"
+                  placeholder="0"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+              </div>
+            </div>
+            {savingsAccount?.last_verified_at && (
+              <p className="text-xs text-muted-foreground">
+                Last verified {formatDate(savingsAccount.last_verified_at)}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setStep("type")}>
+                Back
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleSavingsSubmit}
+                disabled={savingSavings}
+              >
+                {savingSavings ? "Saving..." : "Submit"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {step === "done" && (
         <Card className="text-center">
           <CardContent className="py-8">
@@ -285,72 +374,6 @@ export function Checkin() {
         </div>
       )}
 
-      {/* Savings balance check-in */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <PiggyBank className="h-5 w-5 text-success" />
-            Balance Check-in
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Savings balance</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={savingsBalance || ""}
-                  onChange={(e) => setSavingsBalance(Number(e.target.value))}
-                  className="pl-7"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">APY</label>
-              <div className="relative">
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.1}
-                  value={savingsApy || ""}
-                  onChange={(e) => setSavingsApy(Number(e.target.value))}
-                  className="pr-8"
-                  placeholder="0"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-              </div>
-            </div>
-          </div>
-          {savingsAccount?.last_verified_at && (
-            <p className="text-xs text-muted-foreground">
-              Last verified {formatDate(savingsAccount.last_verified_at)}
-            </p>
-          )}
-          <Button
-            size="sm"
-            disabled={savingSavings}
-            onClick={async () => {
-              setSavingSavings(true)
-              try {
-                await updateSavingsAccount({
-                  current_balance: savingsBalance,
-                  apy: savingsApy / 100,
-                })
-              } finally {
-                setSavingSavings(false)
-              }
-            }}
-          >
-            {savingSavings ? "Updating..." : "Update balance"}
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   )
 }
