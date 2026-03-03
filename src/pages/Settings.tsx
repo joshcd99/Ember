@@ -1,18 +1,15 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
-import { useAppData } from "@/contexts/DataContext"
 import { useTheme } from "@/hooks/useTheme"
 import { useHousehold } from "@/hooks/useHousehold"
-import { formatDate } from "@/lib/utils"
-import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, PiggyBank } from "lucide-react"
+import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check } from "lucide-react"
 
 export function Settings() {
   const { user, signOut, useMockMode } = useAuth()
-  const { savingsAccount, updateSavingsAccount } = useAppData()
   const { theme, toggleTheme } = useTheme()
   const { household, members, updateHouseholdName, inviteMember, cancelInvite } = useHousehold()
 
@@ -22,17 +19,6 @@ export function Settings() {
 
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviting, setInviting] = useState(false)
-
-  const [savingsBalance, setSavingsBalance] = useState(0)
-  const [savingsApy, setSavingsApy] = useState(0)
-  const [savingSavings, setSavingSavings] = useState(false)
-
-  useEffect(() => {
-    if (savingsAccount) {
-      setSavingsBalance(savingsAccount.current_balance)
-      setSavingsApy(savingsAccount.apy * 100)
-    }
-  }, [savingsAccount])
 
   const activeMembers = members.filter(m => m.status === "active")
   const pendingMembers = members.filter(m => m.status === "pending")
@@ -237,73 +223,6 @@ export function Settings() {
             </div>
             <Badge variant="secondary">Coming soon</Badge>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Savings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <PiggyBank className="h-5 w-5 text-muted-foreground" />
-            Savings
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Current balance</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={savingsBalance || ""}
-                  onChange={(e) => setSavingsBalance(Number(e.target.value))}
-                  className="pl-7"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">APY</label>
-              <div className="relative">
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.1}
-                  value={savingsApy || ""}
-                  onChange={(e) => setSavingsApy(Number(e.target.value))}
-                  className="pr-8"
-                  placeholder="0"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-              </div>
-            </div>
-          </div>
-          {savingsAccount?.last_verified_at && (
-            <p className="text-xs text-muted-foreground">
-              Last verified {formatDate(savingsAccount.last_verified_at)}
-            </p>
-          )}
-          <Button
-            size="sm"
-            disabled={savingSavings}
-            onClick={async () => {
-              setSavingSavings(true)
-              try {
-                await updateSavingsAccount({
-                  current_balance: savingsBalance,
-                  apy: savingsApy / 100,
-                })
-              } finally {
-                setSavingSavings(false)
-              }
-            }}
-          >
-            {savingSavings ? "Saving..." : "Save"}
-          </Button>
         </CardContent>
       </Card>
 
