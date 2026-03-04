@@ -71,6 +71,14 @@ export interface Bill {
   recurrence_end_occurrences?: number | null
 }
 
+export interface HouseholdSettings {
+  id: string
+  household_id: string
+  custom_debt_order: string[]
+  created_at: string
+  updated_at: string
+}
+
 export interface Transaction {
   id: string
   user_id: string
@@ -268,6 +276,24 @@ export interface Database {
           linked_income_source_id?: string | null
           linked_debt_id?: string | null
           is_projected?: boolean
+        }
+        Relationships: []
+      }
+      household_settings: {
+        Row: HouseholdSettings
+        Insert: {
+          id?: string
+          household_id: string
+          custom_debt_order?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          custom_debt_order?: string[]
+          created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }

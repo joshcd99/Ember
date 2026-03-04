@@ -8,8 +8,10 @@ import { Debts } from "@/pages/Debts"
 import { Income } from "@/pages/Income"
 import { Bills } from "@/pages/Bills"
 import { Checkin } from "@/pages/Checkin"
+import { Calendar } from "@/pages/Calendar"
 import { Scenarios } from "@/pages/Scenarios"
 import { Settings } from "@/pages/Settings"
+import { Review } from "@/pages/Review"
 
 export default function App() {
   return (
@@ -24,8 +26,10 @@ export default function App() {
                 <Route path="/income" element={<Income />} />
                 <Route path="/bills" element={<Bills />} />
                 <Route path="/checkin" element={<Checkin />} />
+                <Route path="/calendar" element={<Calendar />} />
                 <Route path="/scenarios" element={<Scenarios />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/review" element={<Review />} />
               </Route>
             </Routes>
           </DataProvider>

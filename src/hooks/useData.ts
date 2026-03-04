@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
-import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory } from "@/types/database"
+import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory, HouseholdSettings } from "@/types/database"
 import {
   mockDebts,
   mockIncomeSources,
@@ -20,6 +20,7 @@ interface DataState {
   billCategories: BillCategory[]
   transactions: Transaction[]
   checkins: Checkin[]
+  householdSettings: HouseholdSettings | null
   savingsAccount: SavingsAccount | null
   loading: boolean
 }
@@ -41,6 +42,8 @@ interface DataActions {
   addBillCategory: (category: Omit<BillCategory, "id" | "household_id" | "created_at">) => Promise<void>
   updateBillCategory: (id: string, updates: Partial<BillCategory>) => Promise<void>
   deleteBillCategory: (id: string) => Promise<void>
+  // Household Settings
+  updateCustomDebtOrder: (order: string[]) => Promise<void>
   // Transactions
   addTransaction: (tx: Omit<Transaction, "id" | "user_id" | "household_id">) => Promise<void>
   // Checkins
@@ -60,6 +63,7 @@ export function useData(): AppData {
     incomeSources: [],
     bills: [],
     billCategories: [],
+    householdSettings: null,
     transactions: [],
     checkins: [],
     savingsAccount: null,
@@ -73,6 +77,7 @@ export function useData(): AppData {
         incomeSources: mockIncomeSources,
         bills: mockBills,
         billCategories: mockBillCategories,
+        householdSettings: { id: "mock-settings", household_id: "mock-household", custom_debt_order: [], created_at: "", updated_at: "" },
         transactions: mockTransactions,
         checkins: mockCheckins,
         savingsAccount: mockSavingsAccount,
@@ -88,11 +93,12 @@ export function useData(): AppData {
 
     setState(s => ({ ...s, loading: true }))
 
-    const [debtsRes, incomeRes, billsRes, categoriesRes, txRes, checkinsRes, savingsRes] = await Promise.all([
+    const [debtsRes, incomeRes, billsRes, categoriesRes, settingsRes, txRes, checkinsRes, savingsRes] = await Promise.all([
       supabase.from("debts").select("*").order("created_at", { ascending: true }),
       supabase.from("income_sources").select("*").order("name"),
       supabase.from("bills").select("*").order("next_due_date"),
       supabase.from("bill_categories").select("*").order("name"),
+      supabase.from("household_settings").select("*").eq("household_id", householdId).maybeSingle(),
       supabase.from("transactions").select("*").order("date", { ascending: false }).limit(100),
       supabase.from("checkins").select("*").order("date", { ascending: false }).limit(60),
       supabase.from("savings_accounts").select("*").eq("household_id", householdId).maybeSingle(),
@@ -128,6 +134,7 @@ export function useData(): AppData {
       incomeSources: (incomeRes.data as IncomeSource[]) ?? [],
       bills: (billsRes.data as Bill[]) ?? [],
       billCategories,
+      householdSettings: (settingsRes.data as HouseholdSettings) ?? null,
       transactions: (txRes.data as Transaction[]) ?? [],
       checkins: (checkinsRes.data as Checkin[]) ?? [],
       savingsAccount,
@@ -246,6 +253,25 @@ export function useData(): AppData {
     await fetchAll()
   }
 
+  // --- Household Settings ---
+  const updateCustomDebtOrder = async (order: string[]) => {
+    if (useMockMode) {
+      setState(s => ({
+        ...s,
+        householdSettings: s.householdSettings
+          ? { ...s.householdSettings, custom_debt_order: order, updated_at: new Date().toISOString() }
+          : { id: mockId(), household_id: "mock-household", custom_debt_order: order, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      }))
+      return
+    }
+    const { error } = await supabase.from("household_settings").upsert(
+      { household_id: householdId!, custom_debt_order: order, updated_at: new Date().toISOString() },
+      { onConflict: "household_id" }
+    )
+    if (error) throw error
+    await fetchAll()
+  }
+
   // --- Bill Category CRUD ---
   const addBillCategory = async (category: Omit<BillCategory, "id" | "household_id" | "created_at">) => {
     if (useMockMode) {
@@ -352,6 +378,7 @@ export function useData(): AppData {
     addBill,
     updateBill,
     deleteBill,
+    updateCustomDebtOrder,
     addBillCategory,
     updateBillCategory,
     deleteBillCategory,

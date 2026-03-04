@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="60%" r="60%">
+      <stop offset="0%" stop-color="#2a1a10"/>
+      <stop offset="100%" stop-color="#110e0b"/>
+    </radialGradient>
+    <radialGradient id="glowOuter" cx="50%" cy="70%" r="50%">
+      <stop offset="0%" stop-color="#e8845a" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#e8845a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="flameGrad" cx="50%" cy="100%" r="80%">
+      <stop offset="0%" stop-color="#ffcc80"/>
+      <stop offset="35%" stop-color="#e8845a"/>
+      <stop offset="75%" stop-color="#c9623a"/>
+      <stop offset="100%" stop-color="#8b3a1a"/>
+    </radialGradient>
+    <radialGradient id="innerFlame" cx="50%" cy="100%" r="70%">
+      <stop offset="0%" stop-color="#fff4e0"/>
+      <stop offset="40%" stop-color="#ffb347"/>
+      <stop offset="100%" stop-color="#e8845a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="flameBlur" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+    <clipPath id="roundedRect">
+      <rect width="512" height="512" rx="112" ry="112"/>
+    </clipPath>
+  </defs>
+
+  <!-- Rounded rect background -->
+  <rect width="512" height="512" rx="112" ry="112" fill="url(#bgGrad)"/>
+
+  <!-- Subtle background glow -->
+  <ellipse cx="256" cy="340" rx="160" ry="120" fill="url(#glowOuter)"/>
+
+  <!-- Outer flame glow (blurred) -->
+  <g filter="url(#flameBlur)" opacity="0.5">
+    <path d="M256 420 
+             C200 420 158 385 152 338 
+             C146 295 168 268 180 245
+             C192 222 196 198 188 172
+             C210 195 218 220 214 248
+             C224 228 228 202 222 172
+             C246 202 252 232 244 262
+             C254 238 260 208 252 178
+             C278 210 282 248 272 278
+             C284 254 286 224 278 196
+             C306 228 312 270 300 304
+             C316 282 320 254 312 226
+             C342 262 348 308 334 344
+             C348 326 354 300 350 272
+             C372 308 368 358 348 390
+             C326 412 294 420 256 420Z" 
+          fill="#e8845a"/>
+  </g>
+
+  <!-- Main flame body -->
+  <path d="M256 415 
+           C208 415 168 382 162 338 
+           C156 298 176 272 188 250
+           C198 230 202 208 196 184
+           C216 205 224 228 220 254
+           C230 234 234 210 228 182
+           C250 210 256 238 250 266
+           C260 244 264 216 258 188
+           C282 218 286 254 276 282
+           C288 260 290 232 284 206
+           C310 236 316 276 304 308
+           C318 288 322 260 316 234
+           C344 268 348 312 336 346
+           C348 328 352 304 348 278
+           C368 312 364 358 346 388
+           C326 410 292 415 256 415Z" 
+        fill="url(#flameGrad)"
+        filter="url(#softGlow)"/>
+
+  <!-- Inner bright flame -->
+  <path d="M256 395
+           C228 395 206 374 204 348
+           C202 326 214 310 222 294
+           C228 280 230 264 226 248
+           C238 262 242 278 240 296
+           C246 282 248 264 244 246
+           C258 264 260 284 256 302
+           C262 288 264 270 260 252
+           C272 270 274 292 268 312
+           C274 298 276 280 272 264
+           C286 282 288 306 282 326
+           C290 314 292 298 288 282
+           C300 300 300 322 292 342
+           C282 364 270 375 256 395Z"
+        fill="url(#innerFlame)" opacity="0.9"/>
+
+  <!-- Tiny bright core -->
+  <ellipse cx="256" cy="355" rx="18" ry="24" fill="#fff8f0" opacity="0.6"/>
+
+  <!-- Base ember glow -->
+  <ellipse cx="256" cy="415" rx="55" ry="10" fill="#e8845a" opacity="0.25"/>
+
+  <!-- Letterform: subtle "e" mark at bottom — optional, keeping clean icon -->
+</svg>

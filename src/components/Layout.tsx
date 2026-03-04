@@ -5,8 +5,10 @@ import {
   Wallet,
   Receipt,
   CheckCircle2,
+  CalendarDays,
   SlidersHorizontal,
   Settings,
+  Sparkles,
   LogOut,
   Menu,
   X,
@@ -24,8 +26,10 @@ const navItems = [
   { to: "/income", icon: Wallet, label: "Income" },
   { to: "/bills", icon: Receipt, label: "Bills" },
   { to: "/checkin", icon: CheckCircle2, label: "Check-in" },
+  { to: "/calendar", icon: CalendarDays, label: "Calendar" },
   { to: "/scenarios", icon: SlidersHorizontal, label: "Scenarios" },
   { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/review", icon: Sparkles, label: "Year in Review" },
 ]
 
 export function Layout() {

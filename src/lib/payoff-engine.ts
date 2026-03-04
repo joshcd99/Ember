@@ -1,6 +1,6 @@
 import type { Debt } from "@/types/database"
 
-export type Strategy = "avalanche" | "snowball" | "minimums"
+export type Strategy = "avalanche" | "snowball" | "minimums" | "custom"
 
 interface MonthSnapshot {
   month: number
@@ -17,13 +17,22 @@ interface PayoffResult {
   debtPayoffOrder: { id: string; name: string; month: number }[]
 }
 
-function sortDebts(debts: Debt[], strategy: Strategy): Debt[] {
+function sortDebts(debts: Debt[], strategy: Strategy, customOrder?: string[]): Debt[] {
   const sorted = [...debts]
   switch (strategy) {
     case "avalanche":
       return sorted.sort((a, b) => b.interest_rate - a.interest_rate)
     case "snowball":
       return sorted.sort((a, b) => a.current_balance - b.current_balance)
+    case "custom":
+      if (customOrder && customOrder.length > 0) {
+        return sorted.sort((a, b) => {
+          const ai = customOrder.indexOf(a.id)
+          const bi = customOrder.indexOf(b.id)
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+        })
+      }
+      return sorted
     case "minimums":
       return sorted
   }
@@ -33,7 +42,8 @@ export function calculatePayoff(
   debts: Debt[],
   strategy: Strategy,
   extraMonthly: number = 0,
-  lumpSum: { amount: number; debtId: string; month: number } | null = null
+  lumpSum: { amount: number; debtId: string; month: number } | null = null,
+  customOrder?: string[]
 ): PayoffResult {
   if (debts.length === 0) {
     return {
@@ -46,7 +56,7 @@ export function calculatePayoff(
     }
   }
 
-  const ordered = sortDebts(debts, strategy)
+  const ordered = sortDebts(debts, strategy, customOrder)
   const balances: Record<string, number> = {}
   const rates: Record<string, number> = {}
   const minimums: Record<string, number> = {}

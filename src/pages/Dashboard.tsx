@@ -1,6 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
+import { DebtFreeCountdown } from "@/components/DebtFreeCountdown"
+import { CashFlowRegister } from "@/components/CashFlowRegister"
 import {
   TrendingDown,
   Flame,
@@ -173,20 +175,15 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Debt-free date */}
-        <Card>
-          <CardHeader>
-            <CardDescription>Debt-Free Date</CardDescription>
-            <CardTitle className="text-2xl">
-              {debtFreeDate ? formatDate(debtFreeDate) : "—"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {avalanche ? `${avalanche.months} months at current pace` : "Add debts and income to see your timeline"}
-            </p>
-          </CardContent>
-        </Card>
+        {/* Debt-free countdown */}
+        <DebtFreeCountdown
+          debtFreeDate={debtFreeDate ?? null}
+          months={avalanche?.months ?? null}
+          totalDebt={totalDebt}
+          startingDebt={startingDebt}
+          progressPercent={progressPercent}
+          paidOff={paidOff}
+        />
 
         {/* Monthly cash flow */}
         <Card>
@@ -238,6 +235,9 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Cash flow register */}
+      <CashFlowRegister />
 
       {/* Bottom row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

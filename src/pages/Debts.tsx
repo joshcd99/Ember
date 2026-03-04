@@ -1,11 +1,11 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/EmptyState"
 import { DebtModal } from "@/components/modals/DebtModal"
-import { Check, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil } from "lucide-react"
+import { Check, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered } from "lucide-react"
 import {
   LineChart,
   Line,
@@ -16,10 +16,27 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
-import { formatCurrency, formatCurrencyExact, formatPercent, formatDate } from "@/lib/utils"
+import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
 import type { Debt } from "@/types/database"
 
 /** 3-tier APR badge: >15% red, 7-15% neutral, <7% green */
@@ -33,10 +50,13 @@ const CHART_COLORS = {
   avalanche: "#e8845a",
   snowball: "#4ade80",
   minimums: "#a8a29e",
+  custom: "#c084fc",
   grid: "var(--border)",
 }
 
-const strategyMeta: Record<Strategy, { label: string; description: string; icon: React.ReactNode; color: string }> = {
+type DisplayStrategy = Strategy
+
+const strategyMeta: Record<DisplayStrategy, { label: string; description: string; icon: React.ReactNode; color: string }> = {
   avalanche: {
     label: "Avalanche",
     description: "Highest interest rate first. Maximum burn.",
@@ -55,27 +75,89 @@ const strategyMeta: Record<Strategy, { label: string; description: string; icon:
     icon: <MinusCircle className="h-5 w-5" />,
     color: CHART_COLORS.minimums,
   },
+  custom: {
+    label: "Custom Order",
+    description: "Drag to set your own priority. Your rules.",
+    icon: <ListOrdered className="h-5 w-5" />,
+    color: CHART_COLORS.custom,
+  },
+}
+
+function SortableDebtRow({ debt, index }: { debt: Debt; index: number }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: debt.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    opacity: isDragging ? 0.8 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn("flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2", isDragging && "shadow-lg")}>
+      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground">
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="text-sm font-medium text-muted-foreground w-6">{index + 1}.</span>
+      <div className="flex-1">
+        <span className="text-sm font-medium">{debt.name}</span>
+      </div>
+      <Badge variant={aprBadgeVariant(debt.interest_rate)} className="text-xs">
+        {formatPercent(debt.interest_rate)}
+      </Badge>
+      <span className="text-sm font-medium">{formatCurrency(debt.current_balance)}</span>
+    </div>
+  )
 }
 
 export function Debts() {
-  const { debts, incomeSources, bills, loading } = useAppData()
-  const [selectedStrategy, setSelectedStrategy] = useState<Strategy>("avalanche")
+  const { debts, incomeSources, bills, householdSettings, updateCustomDebtOrder, loading } = useAppData()
+  const [selectedStrategy, setSelectedStrategy] = useState<DisplayStrategy>("avalanche")
   const [modalOpen, setModalOpen] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
+
+  const customOrder = householdSettings?.custom_debt_order ?? []
+
+  // Derive ordered list for drag-and-drop
+  const customOrderedDebts = useMemo(() => {
+    if (customOrder.length === 0) return debts
+    const ordered: Debt[] = []
+    for (const id of customOrder) {
+      const d = debts.find(d => d.id === id)
+      if (d) ordered.push(d)
+    }
+    // Append any debts not in the custom order
+    for (const d of debts) {
+      if (!customOrder.includes(d.id)) ordered.push(d)
+    }
+    return ordered
+  }, [debts, customOrder])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = customOrderedDebts.findIndex(d => d.id === active.id)
+    const newIndex = customOrderedDebts.findIndex(d => d.id === over.id)
+    const reordered = arrayMove(customOrderedDebts, oldIndex, newIndex)
+    updateCustomDebtOrder(reordered.map(d => d.id))
+  }
+
+  const resetToAvalanche = () => {
+    updateCustomDebtOrder([])
+    setSelectedStrategy("avalanche")
+  }
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading...</div>
   }
 
-  const openAdd = () => {
-    setEditingDebt(null)
-    setModalOpen(true)
-  }
-
-  const openEdit = (debt: Debt) => {
-    setEditingDebt(debt)
-    setModalOpen(true)
-  }
+  const openAdd = () => { setEditingDebt(null); setModalOpen(true) }
+  const openEdit = (debt: Debt) => { setEditingDebt(debt); setModalOpen(true) }
 
   if (debts.length === 0) {
     return (
@@ -107,21 +189,18 @@ export function Debts() {
     avalanche: calculatePayoff(debts, "avalanche", extraMonthly),
     snowball: calculatePayoff(debts, "snowball", extraMonthly),
     minimums: calculatePayoff(debts, "minimums"),
+    custom: calculatePayoff(debts, "custom", extraMonthly, null, customOrder.length > 0 ? customOrder : debts.map(d => d.id)),
   }
 
   // Build chart data
   const maxMonths = Math.max(
     results.avalanche.months,
     results.snowball.months,
-    results.minimums.months
+    results.minimums.months,
+    results.custom.months
   )
   const step = Math.max(1, Math.floor(maxMonths / 40))
-  const chartData: Array<{
-    month: number
-    Avalanche: number
-    Snowball: number
-    "Minimums Only": number
-  }> = []
+  const chartData: Array<Record<string, number>> = []
 
   for (let m = 0; m <= maxMonths; m += step) {
     chartData.push({
@@ -129,6 +208,7 @@ export function Debts() {
       Avalanche: results.avalanche.timeline[m]?.totalBalance ?? 0,
       Snowball: results.snowball.timeline[m]?.totalBalance ?? 0,
       "Minimums Only": results.minimums.timeline[m]?.totalBalance ?? 0,
+      Custom: results.custom.timeline[m]?.totalBalance ?? 0,
     })
   }
 
@@ -199,8 +279,8 @@ export function Debts() {
             Add income and bills to see what happens when you add more fuel.
           </p>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {(["avalanche", "snowball", "minimums"] as Strategy[]).map(strategy => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {(["avalanche", "snowball", "minimums", "custom"] as DisplayStrategy[]).map(strategy => {
             const result = results[strategy]
             const meta = strategyMeta[strategy]
             const isSelected = selectedStrategy === strategy
@@ -265,11 +345,37 @@ export function Debts() {
         </div>
       </div>
 
+      {/* Custom order drag-and-drop */}
+      {selectedStrategy === "custom" && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Custom Payoff Order</CardTitle>
+              <Button variant="outline" size="sm" onClick={resetToAvalanche}>
+                Reset to Avalanche
+              </Button>
+            </div>
+            <CardDescription>Drag to reorder. Extra payments go to the top debt first.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={customOrderedDebts.map(d => d.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {customOrderedDebts.map((debt, i) => (
+                    <SortableDebtRow key={debt.id} debt={debt} index={i} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Chart */}
       <Card>
         <CardHeader>
           <CardTitle>Projected Debt Over Time</CardTitle>
-          <CardDescription>All three strategies overlaid for comparison</CardDescription>
+          <CardDescription>All strategies overlaid for comparison</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-80">
@@ -298,30 +404,10 @@ export function Debts() {
                   }}
                 />
                 <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="Avalanche"
-                  stroke={CHART_COLORS.avalanche}
-                  strokeWidth={selectedStrategy === "avalanche" ? 3 : 1.5}
-                  dot={false}
-                  opacity={selectedStrategy === "avalanche" ? 1 : 0.5}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Snowball"
-                  stroke={CHART_COLORS.snowball}
-                  strokeWidth={selectedStrategy === "snowball" ? 3 : 1.5}
-                  dot={false}
-                  opacity={selectedStrategy === "snowball" ? 1 : 0.5}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Minimums Only"
-                  stroke={CHART_COLORS.minimums}
-                  strokeWidth={selectedStrategy === "minimums" ? 3 : 1.5}
-                  dot={false}
-                  opacity={selectedStrategy === "minimums" ? 1 : 0.5}
-                />
+                <Line type="monotone" dataKey="Avalanche" stroke={CHART_COLORS.avalanche} strokeWidth={selectedStrategy === "avalanche" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "avalanche" ? 1 : 0.5} />
+                <Line type="monotone" dataKey="Snowball" stroke={CHART_COLORS.snowball} strokeWidth={selectedStrategy === "snowball" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "snowball" ? 1 : 0.5} />
+                <Line type="monotone" dataKey="Minimums Only" stroke={CHART_COLORS.minimums} strokeWidth={selectedStrategy === "minimums" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "minimums" ? 1 : 0.5} />
+                <Line type="monotone" dataKey="Custom" stroke={CHART_COLORS.custom} strokeWidth={selectedStrategy === "custom" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "custom" ? 1 : 0.5} />
               </LineChart>
             </ResponsiveContainer>
           </div>
