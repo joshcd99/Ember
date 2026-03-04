@@ -58,20 +58,11 @@ export function getNextDueDate(bill: Bill, fromDate: Date): Date | null {
   const rec = normalizeRecurrence(bill)
   let current = startOfDay(new Date(bill.next_due_date))
   const from = startOfDay(fromDate)
-  const startDateLimit = bill.start_date ? startOfDay(new Date(bill.start_date)) : null
   let iterations = 0
   let occurrenceCount = 0
 
   // Step forward until on or after fromDate
   while (isBefore(current, from) && iterations < MAX_ITERATIONS) {
-    current = stepDate(current, rec.interval, rec.unit)
-    occurrenceCount++
-    iterations++
-    if (isPastEnd(rec, current, occurrenceCount)) return null
-  }
-
-  // Also step forward past start_date if needed
-  while (startDateLimit && isBefore(current, startDateLimit) && iterations < MAX_ITERATIONS) {
     current = stepDate(current, rec.interval, rec.unit)
     occurrenceCount++
     iterations++
@@ -90,7 +81,6 @@ export function getOccurrencesInRange(bill: Bill, start: Date, end: Date): Date[
   let current = startOfDay(new Date(bill.next_due_date))
   const rangeStart = startOfDay(start)
   const rangeEnd = startOfDay(end)
-  const startDateLimit = bill.start_date ? startOfDay(new Date(bill.start_date)) : null
   let iterations = 0
   let occurrenceCount = 0
 
@@ -105,9 +95,7 @@ export function getOccurrencesInRange(bill: Bill, start: Date, end: Date): Date[
   // Collect occurrences within range
   while (isBefore(current, rangeEnd) && iterations < MAX_ITERATIONS) {
     if (isPastEnd(rec, current, occurrenceCount)) break
-    if (!startDateLimit || !isBefore(current, startDateLimit)) {
-      results.push(current)
-    }
+    results.push(current)
     current = stepDate(current, rec.interval, rec.unit)
     occurrenceCount++
     iterations++
