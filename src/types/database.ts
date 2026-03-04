@@ -42,6 +42,7 @@ export interface IncomeSource {
   frequency: Frequency
   next_expected_date: string
   is_variable: boolean
+  start_date?: string
 }
 
 export interface BillCategory {
@@ -61,6 +62,7 @@ export interface Bill {
   frequency: Frequency
   next_due_date: string
   category: string
+  start_date?: string
   // Recurrence fields (optional for backward compat)
   recurrence_type?: RecurrenceType
   recurrence_interval?: number
@@ -185,6 +187,7 @@ export interface Database {
           frequency: string
           next_expected_date: string
           is_variable?: boolean
+          start_date?: string
         }
         Update: {
           id?: string
@@ -194,6 +197,7 @@ export interface Database {
           frequency?: string
           next_expected_date?: string
           is_variable?: boolean
+          start_date?: string
         }
         Relationships: []
       }
@@ -227,6 +231,7 @@ export interface Database {
           frequency: string
           next_due_date: string
           category?: string
+          start_date?: string
           recurrence_type?: string
           recurrence_interval?: number
           recurrence_unit?: string
@@ -243,6 +248,7 @@ export interface Database {
           frequency?: string
           next_due_date?: string
           category?: string
+          start_date?: string
           recurrence_type?: string
           recurrence_interval?: number
           recurrence_unit?: string

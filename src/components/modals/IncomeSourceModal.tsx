@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { useAppData } from "@/contexts/DataContext"
 import type { IncomeSource, Frequency } from "@/types/database"
 import { Trash2 } from "lucide-react"
+import { format } from "date-fns"
 
 interface IncomeSourceModalProps {
   open: boolean
@@ -27,6 +28,7 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
   const [frequency, setFrequency] = useState<Frequency>("monthly")
   const [nextExpectedDate, setNextExpectedDate] = useState("")
   const [isVariable, setIsVariable] = useState(false)
+  const [startDate, setStartDate] = useState("")
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -37,12 +39,14 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
       setFrequency(source.frequency)
       setNextExpectedDate(source.next_expected_date)
       setIsVariable(source.is_variable)
+      setStartDate(source.start_date ?? source.next_expected_date)
     } else {
       setName("")
       setAmount("")
       setFrequency("monthly")
       setNextExpectedDate("")
       setIsVariable(false)
+      setStartDate(format(new Date(), "yyyy-MM-dd"))
     }
     setConfirmDelete(false)
   }, [source, open])
@@ -56,6 +60,7 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
         frequency,
         next_expected_date: nextExpectedDate,
         is_variable: isVariable,
+        start_date: startDate,
       }
       if (isEdit) {
         await updateIncomeSource(source.id, data)
@@ -127,13 +132,23 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Next Expected Date</label>
-            <Input
-              type="date"
-              value={nextExpectedDate}
-              onChange={(e) => setNextExpectedDate(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Next Expected Date</label>
+              <Input
+                type="date"
+                value={nextExpectedDate}
+                onChange={(e) => setNextExpectedDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Start Date</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
           </div>
 
           <label className="flex items-center gap-3 cursor-pointer">

@@ -62,6 +62,7 @@ export const mockIncomeSources: IncomeSource[] = [
     frequency: "biweekly",
     next_expected_date: "2026-02-27",
     is_variable: false,
+    start_date: "2025-01-01",
   },
   {
     id: "2",
@@ -71,6 +72,7 @@ export const mockIncomeSources: IncomeSource[] = [
     frequency: "monthly",
     next_expected_date: "2026-03-01",
     is_variable: true,
+    start_date: "2025-01-01",
   },
 ]
 
@@ -84,12 +86,12 @@ export const mockBillCategories: BillCategory[] = DEFAULT_BILL_CATEGORIES.map((c
 }))
 
 export const mockBills: Bill[] = [
-  { id: "1", household_id: "mock-household", name: "Rent", amount: 1400, frequency: "monthly", next_due_date: "2026-03-01", category: "Housing", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
-  { id: "2", household_id: "mock-household", name: "Electric", amount: 120, frequency: "monthly", next_due_date: "2026-03-05", category: "Utilities", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
-  { id: "3", household_id: "mock-household", name: "Internet", amount: 65, frequency: "monthly", next_due_date: "2026-02-28", category: "Utilities", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
-  { id: "4", household_id: "mock-household", name: "Phone", amount: 85, frequency: "monthly", next_due_date: "2026-03-10", category: "Utilities", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
-  { id: "5", household_id: "mock-household", name: "Car Insurance", amount: 140, frequency: "monthly", next_due_date: "2026-03-01", category: "Insurance", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
-  { id: "6", household_id: "mock-household", name: "Groceries", amount: 400, frequency: "monthly", next_due_date: "2026-03-01", category: "Food", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "1", household_id: "mock-household", name: "Rent", amount: 1400, frequency: "monthly", next_due_date: "2026-03-01", category: "Housing", start_date: "2025-01-01", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "2", household_id: "mock-household", name: "Electric", amount: 120, frequency: "monthly", next_due_date: "2026-03-05", category: "Utilities", start_date: "2025-01-01", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "3", household_id: "mock-household", name: "Internet", amount: 65, frequency: "monthly", next_due_date: "2026-02-28", category: "Utilities", start_date: "2025-01-01", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "4", household_id: "mock-household", name: "Phone", amount: 85, frequency: "monthly", next_due_date: "2026-03-10", category: "Utilities", start_date: "2025-01-01", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "5", household_id: "mock-household", name: "Car Insurance", amount: 140, frequency: "monthly", next_due_date: "2026-03-01", category: "Insurance", start_date: "2025-01-01", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "6", household_id: "mock-household", name: "Groceries", amount: 400, frequency: "monthly", next_due_date: "2026-03-01", category: "Food", start_date: "2025-01-01", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
 ]
 
 export const mockTransactions: Transaction[] = [

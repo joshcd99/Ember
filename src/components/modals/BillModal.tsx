@@ -12,6 +12,7 @@ import { useAppData } from "@/contexts/DataContext"
 import type { Bill, Frequency, RecurrenceUnit, RecurrenceEndType } from "@/types/database"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
 import { Trash2, Plus, X } from "lucide-react"
+import { format } from "date-fns"
 
 interface BillModalProps {
   open: boolean
@@ -45,6 +46,8 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  const [startDate, setStartDate] = useState("")
+
   // Recurrence state
   const [recurrenceInterval, setRecurrenceInterval] = useState(1)
   const [recurrenceUnit, setRecurrenceUnit] = useState<RecurrenceUnit>("month")
@@ -66,6 +69,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
       setAmount(String(bill.amount))
       setNextDueDate(bill.next_due_date)
       setCategory(bill.category)
+      setStartDate(bill.start_date ?? bill.next_due_date)
 
       // Populate recurrence from bill fields or legacy frequency
       if (bill.recurrence_type && bill.recurrence_unit) {
@@ -101,6 +105,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
       setAmount("")
       setNextDueDate("")
       setCategory("Other")
+      setStartDate(format(new Date(), "yyyy-MM-dd"))
       setRecurrenceInterval(1)
       setRecurrenceUnit("month")
       setRecurrenceDaysOfWeek([])
@@ -152,6 +157,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
         frequency: recurrenceToLegacyFrequency(recurrenceInterval, recurrenceUnit),
         next_due_date: nextDueDate,
         category,
+        start_date: startDate,
         recurrence_type: recurrenceType as Bill["recurrence_type"],
         recurrence_interval: recurrenceInterval,
         recurrence_unit: recurrenceUnit,
@@ -241,6 +247,17 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
                 onChange={(e) => setNextDueDate(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* Start Date */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Start Date</label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Occurrences before this date won't appear on the calendar</p>
           </div>
 
           {/* Category pills */}
