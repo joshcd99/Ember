@@ -14,7 +14,7 @@ export function Settings() {
   const { user, signOut, useMockMode } = useAuth()
   const { billCategories, addBillCategory, deleteBillCategory, householdSettings, updateBalanceThresholds } = useAppData()
   const { theme, toggleTheme } = useTheme()
-  const { household, members, updateHouseholdName, inviteMember, cancelInvite } = useHousehold()
+  const { household, members, updateHouseholdName, inviteMember, removeMember } = useHousehold()
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState("")
@@ -138,13 +138,29 @@ export function Settings() {
               <p className="text-sm font-medium mb-2">Members</p>
               <div className="space-y-2">
                 {activeMembers.map(m => (
-                  <div key={m.id} className="flex items-center gap-2 text-sm">
-                    <User className="h-4 w-4 text-muted-foreground" />
-                    <span>{m.invited_email ?? (m.user_id === user?.id ? user.email : m.user_id)}</span>
-                    {m.joined_at && (
-                      <span className="text-muted-foreground text-xs">
-                        joined {new Date(m.joined_at).toLocaleDateString()}
-                      </span>
+                  <div key={m.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span>{m.invited_email ?? (m.user_id === user?.id ? user.email : m.user_id)}</span>
+                      {m.joined_at && (
+                        <span className="text-muted-foreground text-xs">
+                          joined {new Date(m.joined_at).toLocaleDateString()}
+                        </span>
+                      )}
+                      {m.user_id === user?.id && <Badge variant="secondary">You</Badge>}
+                    </div>
+                    {m.user_id !== user?.id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (confirm("Remove this member from your household?")) {
+                            removeMember(m.id)
+                          }
+                        }}
+                      >
+                        Remove
+                      </Button>
                     )}
                   </div>
                 ))}
@@ -166,7 +182,7 @@ export function Settings() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => cancelInvite(m.id)}
+                        onClick={() => removeMember(m.id)}
                       >
                         Cancel
                       </Button>
