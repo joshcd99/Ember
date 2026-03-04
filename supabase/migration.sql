@@ -1,4 +1,4 @@
--- Clearpath Database Schema
+-- Ember Database Schema
 -- Run this in the Supabase SQL Editor
 
 -- Enable UUID generation

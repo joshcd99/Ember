@@ -1,4 +1,4 @@
--- Clearpath Household Migration
+-- Ember Household Migration
 -- Run this in the Supabase SQL Editor AFTER migration.sql
 -- Converts per-user data scoping to per-household
 

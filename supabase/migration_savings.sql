@@ -1,4 +1,4 @@
--- Clearpath Savings Migration
+-- Ember Savings Migration
 -- Run this in the Supabase SQL Editor AFTER migration_households.sql
 
 -- ============================================
