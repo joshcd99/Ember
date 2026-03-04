@@ -18,7 +18,7 @@ interface DayEvent {
 }
 
 export function Calendar() {
-  const { bills, billCategories, incomeSources, debts, savingsAccount, loading } = useAppData()
+  const { bills, billCategories, incomeSources, debts, savingsAccount, householdSettings, loading } = useAppData()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
 
@@ -164,13 +164,13 @@ export function Calendar() {
                 const today = isToday(day)
                 const isSelected = selectedDay && isSameDay(day, selectedDay)
 
-                // Financial pressure coloring
-                const billTotal = events.filter(e => e.type === "bill" || e.type === "debt").reduce((s, e) => s + e.amount, 0)
-                const incomeTotal = events.filter(e => e.type === "income").reduce((s, e) => s + e.amount, 0)
+                // Balance-based coloring
+                const upperThreshold = householdSettings?.balance_upper_threshold ?? 10000
+                const lowerThreshold = householdSettings?.balance_lower_threshold ?? 2000
                 let bgTint = ""
-                if (events.length > 0) {
-                  if (incomeTotal > 0 && billTotal === 0) bgTint = "bg-success/8"
-                  else if (billTotal > incomeTotal && incomeTotal > 0) bgTint = "bg-destructive/8"
+                if (dayBalance !== undefined) {
+                  if (dayBalance >= upperThreshold) bgTint = "bg-success/8"
+                  else if (dayBalance <= lowerThreshold) bgTint = "bg-destructive/8"
                 }
 
                 return (

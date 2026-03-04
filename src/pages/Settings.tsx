@@ -8,11 +8,11 @@ import { useAppData } from "@/contexts/DataContext"
 import { useTheme } from "@/hooks/useTheme"
 import { useHousehold } from "@/hooks/useHousehold"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
-import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus } from "lucide-react"
+import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus, CalendarDays } from "lucide-react"
 
 export function Settings() {
   const { user, signOut, useMockMode } = useAuth()
-  const { billCategories, addBillCategory, deleteBillCategory } = useAppData()
+  const { billCategories, addBillCategory, deleteBillCategory, householdSettings, updateBalanceThresholds } = useAppData()
   const { theme, toggleTheme } = useTheme()
   const { household, members, updateHouseholdName, inviteMember, cancelInvite } = useHousehold()
 
@@ -27,6 +27,11 @@ export function Settings() {
   const [newCatName, setNewCatName] = useState("")
   const [newCatColor, setNewCatColor] = useState<string>(CATEGORY_COLORS[0])
   const [confirmDeleteCatId, setConfirmDeleteCatId] = useState<string | null>(null)
+
+  // Balance threshold settings
+  const [upperThreshold, setUpperThreshold] = useState(String(householdSettings?.balance_upper_threshold ?? 10000))
+  const [lowerThreshold, setLowerThreshold] = useState(String(householdSettings?.balance_lower_threshold ?? 2000))
+  const [thresholdsDirty, setThresholdsDirty] = useState(false)
 
   const activeMembers = members.filter(m => m.status === "active")
   const pendingMembers = members.filter(m => m.status === "pending")
@@ -231,6 +236,54 @@ export function Settings() {
             </div>
             <Badge variant="secondary">Coming soon</Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Calendar Thresholds */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5 text-muted-foreground" />
+            Calendar Balance Thresholds
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Days are tinted green when your balance is above the upper threshold, and red when below the lower threshold.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Upper (green)</label>
+              <Input
+                type="number"
+                value={upperThreshold}
+                onChange={(e) => { setUpperThreshold(e.target.value); setThresholdsDirty(true) }}
+                min={0}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Lower (red)</label>
+              <Input
+                type="number"
+                value={lowerThreshold}
+                onChange={(e) => { setLowerThreshold(e.target.value); setThresholdsDirty(true) }}
+                min={0}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          {thresholdsDirty && (
+            <Button
+              size="sm"
+              onClick={async () => {
+                await updateBalanceThresholds(Number(upperThreshold) || 10000, Number(lowerThreshold) || 2000)
+                setThresholdsDirty(false)
+              }}
+            >
+              Save thresholds
+            </Button>
+          )}
         </CardContent>
       </Card>
 

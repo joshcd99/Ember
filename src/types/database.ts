@@ -75,6 +75,8 @@ export interface HouseholdSettings {
   id: string
   household_id: string
   custom_debt_order: string[]
+  balance_upper_threshold: number
+  balance_lower_threshold: number
   created_at: string
   updated_at: string
 }

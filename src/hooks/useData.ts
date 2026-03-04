@@ -44,6 +44,7 @@ interface DataActions {
   deleteBillCategory: (id: string) => Promise<void>
   // Household Settings
   updateCustomDebtOrder: (order: string[]) => Promise<void>
+  updateBalanceThresholds: (upper: number, lower: number) => Promise<void>
   // Transactions
   addTransaction: (tx: Omit<Transaction, "id" | "user_id" | "household_id">) => Promise<void>
   // Checkins
@@ -77,7 +78,7 @@ export function useData(): AppData {
         incomeSources: mockIncomeSources,
         bills: mockBills,
         billCategories: mockBillCategories,
-        householdSettings: { id: "mock-settings", household_id: "mock-household", custom_debt_order: [], created_at: "", updated_at: "" },
+        householdSettings: { id: "mock-settings", household_id: "mock-household", custom_debt_order: [], balance_upper_threshold: 10000, balance_lower_threshold: 2000, created_at: "", updated_at: "" },
         transactions: mockTransactions,
         checkins: mockCheckins,
         savingsAccount: mockSavingsAccount,
@@ -260,12 +261,30 @@ export function useData(): AppData {
         ...s,
         householdSettings: s.householdSettings
           ? { ...s.householdSettings, custom_debt_order: order, updated_at: new Date().toISOString() }
-          : { id: mockId(), household_id: "mock-household", custom_debt_order: order, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+          : { id: mockId(), household_id: "mock-household", custom_debt_order: order, balance_upper_threshold: 10000, balance_lower_threshold: 2000, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
       }))
       return
     }
     const { error } = await supabase.from("household_settings").upsert(
       { household_id: householdId!, custom_debt_order: order, updated_at: new Date().toISOString() },
+      { onConflict: "household_id" }
+    )
+    if (error) throw error
+    await fetchAll()
+  }
+
+  const updateBalanceThresholds = async (upper: number, lower: number) => {
+    if (useMockMode) {
+      setState(s => ({
+        ...s,
+        householdSettings: s.householdSettings
+          ? { ...s.householdSettings, balance_upper_threshold: upper, balance_lower_threshold: lower, updated_at: new Date().toISOString() }
+          : { id: mockId(), household_id: "mock-household", custom_debt_order: [], balance_upper_threshold: upper, balance_lower_threshold: lower, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      }))
+      return
+    }
+    const { error } = await supabase.from("household_settings").upsert(
+      { household_id: householdId!, balance_upper_threshold: upper, balance_lower_threshold: lower, updated_at: new Date().toISOString() },
       { onConflict: "household_id" }
     )
     if (error) throw error
@@ -379,6 +398,7 @@ export function useData(): AppData {
     updateBill,
     deleteBill,
     updateCustomDebtOrder,
+    updateBalanceThresholds,
     addBillCategory,
     updateBillCategory,
     deleteBillCategory,

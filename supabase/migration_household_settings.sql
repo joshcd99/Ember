@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS public.household_settings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE UNIQUE,
   custom_debt_order JSONB NOT NULL DEFAULT '[]',
+  balance_upper_threshold NUMERIC NOT NULL DEFAULT 10000,
+  balance_lower_threshold NUMERIC NOT NULL DEFAULT 2000,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
