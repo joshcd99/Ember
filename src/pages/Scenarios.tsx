@@ -206,15 +206,18 @@ export function Scenarios() {
   const baselineMonthlyNet = monthlyIncome - monthlyBillsTotal - monthlyMinimums - currentExtra
   const scenarioMonthlyNet = monthlyIncome + incomeSlider - monthlyBillsTotal - monthlyMinimums - scenarioExtra
 
+  // Savings projection should cover at least the full debt payoff timeline
+  const savingsMonths = Math.max(36, baseline.months, scenario.months)
+
   const savingsBaseline = useMemo(() => {
     if (!savingsAccount) return null
     return projectSavings({
       startingBalance: savingsAccount.current_balance,
       monthlyNet: baselineMonthlyNet,
       apy: savingsAccount.apy,
-      months: 36,
+      months: savingsMonths,
     })
-  }, [savingsAccount, baselineMonthlyNet])
+  }, [savingsAccount, baselineMonthlyNet, savingsMonths])
 
   const savingsScenario = useMemo(() => {
     if (!savingsAccount) return null
@@ -223,10 +226,10 @@ export function Scenarios() {
       startingBalance: savingsAccount.current_balance,
       monthlyNet: scenarioMonthlyNet,
       apy: savingsAccount.apy,
-      months: 36,
+      months: savingsMonths,
       purchase,
     })
-  }, [savingsAccount, scenarioMonthlyNet, purchaseAmount, purchaseEngineMonth])
+  }, [savingsAccount, scenarioMonthlyNet, savingsMonths, purchaseAmount, purchaseEngineMonth])
 
   // Step 3: Build unified chart data
   const chartData = useMemo(() => {
@@ -292,13 +295,16 @@ export function Scenarios() {
       })
     }
 
-    // Downsample to ~60 points, always keeping the today boundary
+    // Downsample to ~60 points, always keeping critical boundaries
     if (points.length > 60) {
       const todayIdx = points.findIndex(p => p.calendarMonth === todayCalendarMonth)
+      // Preserve the purchase month so the dip is visible
+      const purchaseAbsMonth = purchaseAmount > 0 ? nowAbsMonth + purchaseEngineMonth : -1
+      const purchaseIdx = points.findIndex(p => calendarToAbsMonth(p.calendarMonth) === purchaseAbsMonth)
       const step = Math.ceil(points.length / 60)
       const sampled: ChartDataPoint[] = []
       for (let i = 0; i < points.length; i++) {
-        if (i % step === 0 || i === todayIdx || i === points.length - 1) {
+        if (i % step === 0 || i === todayIdx || i === purchaseIdx || i === points.length - 1) {
           sampled.push(points[i])
         }
       }
@@ -306,7 +312,7 @@ export function Scenarios() {
     }
 
     return points
-  }, [hasDebts, historicalResult, baseline, scenario, savingsBaseline, savingsScenario, savingsAccount, nowAbsMonth, todayCalendarMonth])
+  }, [hasDebts, historicalResult, baseline, scenario, savingsBaseline, savingsScenario, savingsAccount, nowAbsMonth, todayCalendarMonth, purchaseAmount, purchaseEngineMonth])
 
   // Step 4: Timeframe filtering
   const filteredChartData = useMemo(() => {
