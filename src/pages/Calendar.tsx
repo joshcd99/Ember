@@ -67,7 +67,7 @@ export function Calendar() {
         const day = Math.min(dueDay, maxDay)
         const date = new Date(year, month, day)
         if (date >= rangeStart && date < rangeEnd) {
-          addEvent(date, { type: "debt", name: `${debt.name} payment`, amount: debt.minimum_payment })
+          addEvent(date, { type: "debt", name: debt.name, amount: debt.minimum_payment })
         }
       }
     }
