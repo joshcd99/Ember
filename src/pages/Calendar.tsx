@@ -6,7 +6,7 @@ import { getOccurrencesInRange } from "@/lib/recurrence"
 import { getIncomeOccurrencesInRange } from "@/lib/income-recurrence"
 import { formatCurrency } from "@/lib/utils"
 import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X } from "lucide-react"
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday } from "date-fns"
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday, eachDayOfInterval } from "date-fns"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
@@ -18,7 +18,7 @@ interface DayEvent {
 }
 
 export function Calendar() {
-  const { bills, billCategories, incomeSources, debts, loading } = useAppData()
+  const { bills, billCategories, incomeSources, debts, savingsAccount, loading } = useAppData()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
 
@@ -60,7 +60,6 @@ export function Calendar() {
     // Debt payments (monthly on due_day)
     for (const debt of debts) {
       const dueDay = debt.due_day
-      // Check each month that overlaps with calendar range
       for (let m = monthStart.getMonth() - 1; m <= monthStart.getMonth() + 1; m++) {
         const year = monthStart.getFullYear() + Math.floor(m / 12)
         const month = ((m % 12) + 12) % 12
@@ -68,13 +67,36 @@ export function Calendar() {
         const day = Math.min(dueDay, maxDay)
         const date = new Date(year, month, day)
         if (date >= rangeStart && date < rangeEnd) {
-          addEvent(date, { type: "debt", name: debt.name, amount: debt.minimum_payment })
+          addEvent(date, { type: "debt", name: `${debt.name} payment`, amount: debt.minimum_payment })
         }
       }
     }
 
     return map
   }, [bills, billCategories, incomeSources, debts, calendarStart, calendarEnd, monthStart])
+
+  // Build running balance map across the visible calendar range
+  const balanceMap = useMemo(() => {
+    const map = new Map<string, number>()
+    const startBalance = savingsAccount?.current_balance ?? 0
+    const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd })
+    let running = startBalance
+
+    for (const d of days) {
+      const key = format(d, "yyyy-MM-dd")
+      const events = eventsMap.get(key) ?? []
+      for (const event of events) {
+        if (event.type === "income") {
+          running += event.amount
+        } else {
+          running -= event.amount
+        }
+      }
+      map.set(key, running)
+    }
+
+    return map
+  }, [eventsMap, calendarStart, calendarEnd, savingsAccount])
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading...</div>
@@ -94,6 +116,7 @@ export function Calendar() {
 
   const goToday = () => setCurrentMonth(new Date())
   const selectedEvents = selectedDay ? eventsMap.get(format(selectedDay, "yyyy-MM-dd")) ?? [] : []
+  const selectedBalance = selectedDay ? balanceMap.get(format(selectedDay, "yyyy-MM-dd")) : undefined
 
   return (
     <div className="space-y-6">
@@ -136,6 +159,7 @@ export function Calendar() {
               {week.map(day => {
                 const key = format(day, "yyyy-MM-dd")
                 const events = eventsMap.get(key) ?? []
+                const dayBalance = balanceMap.get(key)
                 const inMonth = isSameMonth(day, currentMonth)
                 const today = isToday(day)
                 const isSelected = selectedDay && isSameDay(day, selectedDay)
@@ -147,7 +171,6 @@ export function Calendar() {
                 if (events.length > 0) {
                   if (incomeTotal > 0 && billTotal === 0) bgTint = "bg-success/8"
                   else if (billTotal > incomeTotal && incomeTotal > 0) bgTint = "bg-destructive/8"
-                  else if (billTotal > 0 && incomeTotal === 0) bgTint = ""
                 }
 
                 return (
@@ -155,7 +178,7 @@ export function Calendar() {
                     key={key}
                     onClick={() => setSelectedDay(events.length > 0 ? day : null)}
                     className={cn(
-                      "relative min-h-[80px] p-1.5 border-b border-r border-border text-left transition-colors",
+                      "relative min-h-[90px] p-1.5 border-b border-r border-border text-left transition-colors",
                       !inMonth && "opacity-40",
                       bgTint,
                       isSelected && "ring-2 ring-primary ring-inset",
@@ -169,7 +192,7 @@ export function Calendar() {
                     )}>
                       {format(day, "d")}
                     </span>
-                    {/* Event dots (max 3 visible) */}
+                    {/* Events with amounts */}
                     <div className="mt-0.5 space-y-0.5">
                       {events.slice(0, 3).map((event, ei) => (
                         <div key={ei} className="flex items-center gap-1 truncate">
@@ -178,12 +201,27 @@ export function Calendar() {
                             event.type === "income" ? "bg-success" : event.type === "debt" ? "bg-warning" : "",
                           )} style={event.type === "bill" ? { backgroundColor: event.color ?? "#8C8578" } : {}} />
                           <span className="text-[10px] truncate text-muted-foreground">{event.name}</span>
+                          <span className={cn(
+                            "text-[10px] ml-auto flex-shrink-0",
+                            event.type === "income" ? "text-success" : "text-muted-foreground",
+                          )}>
+                            {event.type === "income" ? "+" : "-"}${event.amount >= 1000 ? `${(event.amount / 1000).toFixed(1)}k` : event.amount}
+                          </span>
                         </div>
                       ))}
                       {events.length > 3 && (
                         <span className="text-[10px] text-muted-foreground">+{events.length - 3} more</span>
                       )}
                     </div>
+                    {/* Day-end balance */}
+                    {events.length > 0 && dayBalance !== undefined && (
+                      <div className={cn(
+                        "absolute bottom-1 right-1.5 text-[9px] font-medium",
+                        dayBalance < 0 ? "text-destructive" : "text-muted-foreground/60",
+                      )}>
+                        {formatCurrency(dayBalance)}
+                      </div>
+                    )}
                   </button>
                 )
               })}
@@ -224,12 +262,22 @@ export function Calendar() {
                   </div>
                   <span className={cn(
                     "text-sm font-medium",
-                    event.type === "income" ? "text-success" : ""
+                    event.type === "income" ? "text-success" : "text-destructive"
                   )}>
                     {event.type === "income" ? "+" : "-"}{formatCurrency(event.amount)}
                   </span>
                 </div>
               ))}
+              {/* Day net + running balance */}
+              <div className="border-t border-border pt-2 mt-2 flex items-center justify-between">
+                <span className="text-sm font-medium">Balance after today</span>
+                <span className={cn(
+                  "text-sm font-semibold",
+                  selectedBalance !== undefined && selectedBalance < 0 ? "text-destructive" : "text-foreground",
+                )}>
+                  {selectedBalance !== undefined ? formatCurrency(selectedBalance) : "—"}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
