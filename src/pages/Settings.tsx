@@ -8,6 +8,7 @@ import { useAppData } from "@/contexts/DataContext"
 import { useTheme } from "@/hooks/useTheme"
 import { useHousehold } from "@/hooks/useHousehold"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus, CalendarDays } from "lucide-react"
 
 export function Settings() {
@@ -27,6 +28,7 @@ export function Settings() {
   const [newCatName, setNewCatName] = useState("")
   const [newCatColor, setNewCatColor] = useState<string>(CATEGORY_COLORS[0])
   const [confirmDeleteCatId, setConfirmDeleteCatId] = useState<string | null>(null)
+  const [confirmRemoveMemberId, setConfirmRemoveMemberId] = useState<string | null>(null)
 
   // Balance threshold settings
   const [upperThreshold, setUpperThreshold] = useState(String(householdSettings?.balance_upper_threshold ?? 10000))
@@ -153,11 +155,7 @@ export function Settings() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          if (confirm("Remove this member from your household?")) {
-                            removeMember(m.id)
-                          }
-                        }}
+                        onClick={() => setConfirmRemoveMemberId(m.id)}
                       >
                         Remove
                       </Button>
@@ -419,6 +417,32 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Remove member confirmation dialog */}
+      <Dialog open={!!confirmRemoveMemberId} onOpenChange={(open) => !open && setConfirmRemoveMemberId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove this person from your household? They'll lose access to all shared data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRemoveMemberId(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirmRemoveMemberId) removeMember(confirmRemoveMemberId)
+                setConfirmRemoveMemberId(null)
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
