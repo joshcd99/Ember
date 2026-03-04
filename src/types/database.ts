@@ -1,6 +1,11 @@
 export type Frequency = "weekly" | "biweekly" | "monthly"
 export type TransactionType = "income" | "expense" | "debt_payment"
 
+// Recurrence types for bills
+export type RecurrenceType = "weekly" | "biweekly" | "monthly" | "yearly" | "custom"
+export type RecurrenceUnit = "day" | "week" | "month" | "year"
+export type RecurrenceEndType = "never" | "on_date" | "after_occurrences"
+
 export interface Household {
   id: string
   name: string
@@ -39,6 +44,15 @@ export interface IncomeSource {
   is_variable: boolean
 }
 
+export interface BillCategory {
+  id: string
+  household_id: string
+  name: string
+  color: string
+  is_default: boolean
+  created_at: string
+}
+
 export interface Bill {
   id: string
   household_id: string
@@ -47,6 +61,14 @@ export interface Bill {
   frequency: Frequency
   next_due_date: string
   category: string
+  // Recurrence fields (optional for backward compat)
+  recurrence_type?: RecurrenceType
+  recurrence_interval?: number
+  recurrence_unit?: RecurrenceUnit
+  recurrence_days_of_week?: number[]
+  recurrence_end_type?: RecurrenceEndType
+  recurrence_end_date?: string | null
+  recurrence_end_occurrences?: number | null
 }
 
 export interface Transaction {
@@ -165,6 +187,26 @@ export interface Database {
         }
         Relationships: []
       }
+      bill_categories: {
+        Row: BillCategory
+        Insert: {
+          id?: string
+          household_id: string
+          name: string
+          color: string
+          is_default?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          name?: string
+          color?: string
+          is_default?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       bills: {
         Row: Bill
         Insert: {
@@ -175,6 +217,13 @@ export interface Database {
           frequency: string
           next_due_date: string
           category?: string
+          recurrence_type?: string
+          recurrence_interval?: number
+          recurrence_unit?: string
+          recurrence_days_of_week?: number[]
+          recurrence_end_type?: string
+          recurrence_end_date?: string | null
+          recurrence_end_occurrences?: number | null
         }
         Update: {
           id?: string
@@ -184,6 +233,13 @@ export interface Database {
           frequency?: string
           next_due_date?: string
           category?: string
+          recurrence_type?: string
+          recurrence_interval?: number
+          recurrence_unit?: string
+          recurrence_days_of_week?: number[]
+          recurrence_end_type?: string
+          recurrence_end_date?: string | null
+          recurrence_end_occurrences?: number | null
         }
         Relationships: []
       }

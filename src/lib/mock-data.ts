@@ -1,4 +1,6 @@
-import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount } from "@/types/database"
+import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory } from "@/types/database"
+import { recurrenceToMonthlyMultiplier } from "@/lib/recurrence"
+import { DEFAULT_BILL_CATEGORIES } from "@/lib/bill-categories"
 
 export const mockDebts: Debt[] = [
   {
@@ -72,13 +74,22 @@ export const mockIncomeSources: IncomeSource[] = [
   },
 ]
 
+export const mockBillCategories: BillCategory[] = DEFAULT_BILL_CATEGORIES.map((c, i) => ({
+  id: `cat-${i + 1}`,
+  household_id: "mock-household",
+  name: c.name,
+  color: c.color,
+  is_default: true,
+  created_at: "2026-01-01T00:00:00Z",
+}))
+
 export const mockBills: Bill[] = [
-  { id: "1", household_id: "mock-household", name: "Rent", amount: 1400, frequency: "monthly", next_due_date: "2026-03-01", category: "housing" },
-  { id: "2", household_id: "mock-household", name: "Electric", amount: 120, frequency: "monthly", next_due_date: "2026-03-05", category: "utilities" },
-  { id: "3", household_id: "mock-household", name: "Internet", amount: 65, frequency: "monthly", next_due_date: "2026-02-28", category: "utilities" },
-  { id: "4", household_id: "mock-household", name: "Phone", amount: 85, frequency: "monthly", next_due_date: "2026-03-10", category: "utilities" },
-  { id: "5", household_id: "mock-household", name: "Car Insurance", amount: 140, frequency: "monthly", next_due_date: "2026-03-01", category: "insurance" },
-  { id: "6", household_id: "mock-household", name: "Groceries", amount: 400, frequency: "monthly", next_due_date: "2026-03-01", category: "food" },
+  { id: "1", household_id: "mock-household", name: "Rent", amount: 1400, frequency: "monthly", next_due_date: "2026-03-01", category: "Housing", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "2", household_id: "mock-household", name: "Electric", amount: 120, frequency: "monthly", next_due_date: "2026-03-05", category: "Utilities", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "3", household_id: "mock-household", name: "Internet", amount: 65, frequency: "monthly", next_due_date: "2026-02-28", category: "Utilities", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "4", household_id: "mock-household", name: "Phone", amount: 85, frequency: "monthly", next_due_date: "2026-03-10", category: "Utilities", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "5", household_id: "mock-household", name: "Car Insurance", amount: 140, frequency: "monthly", next_due_date: "2026-03-01", category: "Insurance", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
+  { id: "6", household_id: "mock-household", name: "Groceries", amount: 400, frequency: "monthly", next_due_date: "2026-03-01", category: "Food", recurrence_type: "monthly", recurrence_interval: 1, recurrence_unit: "month", recurrence_end_type: "never" },
 ]
 
 export const mockTransactions: Transaction[] = [
@@ -124,13 +135,7 @@ export function getMonthlyIncome(sources: IncomeSource[]): number {
 }
 
 export function getMonthlyBills(bills: Bill[]): number {
-  return bills.reduce((sum, b) => {
-    switch (b.frequency) {
-      case "weekly": return sum + b.amount * 4.33
-      case "biweekly": return sum + b.amount * 2.167
-      case "monthly": return sum + b.amount
-    }
-  }, 0)
+  return bills.reduce((sum, b) => sum + b.amount * recurrenceToMonthlyMultiplier(b), 0)
 }
 
 export function getMonthlyMinimums(debts: Debt[]): number {

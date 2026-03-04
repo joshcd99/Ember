@@ -7,11 +7,12 @@ import { BillModal } from "@/components/modals/BillModal"
 import { Receipt, Plus, Pencil } from "lucide-react"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyBills } from "@/lib/mock-data"
+import { formatRecurrence } from "@/lib/recurrence"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Bill } from "@/types/database"
 
 export function Bills() {
-  const { bills, loading } = useAppData()
+  const { bills, billCategories, loading } = useAppData()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingBill, setEditingBill] = useState<Bill | null>(null)
@@ -22,13 +23,8 @@ export function Bills() {
 
   const monthlyBillsTotal = getMonthlyBills(bills)
 
-  const frequencyLabel = (f: string) => {
-    switch (f) {
-      case "weekly": return "Weekly"
-      case "biweekly": return "Every 2 weeks"
-      case "monthly": return "Monthly"
-      default: return f
-    }
+  const getCategoryColor = (categoryName: string) => {
+    return billCategories.find(c => c.name === categoryName)?.color
   }
 
   const openAdd = () => { setEditingBill(null); setModalOpen(true) }
@@ -67,34 +63,42 @@ export function Bills() {
         />
       ) : (
         <div className="space-y-3">
-          {bills.map(bill => (
-            <Card
-              key={bill.id}
-              className="cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => openEdit(bill)}
-            >
-              <CardContent className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                    <Receipt className="h-5 w-5 text-muted-foreground" />
+          {bills.map(bill => {
+            const catColor = getCategoryColor(bill.category)
+            return (
+              <Card
+                key={bill.id}
+                className="cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => openEdit(bill)}
+              >
+                <CardContent className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                      <Receipt className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{bill.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatRecurrence(bill)} &middot; Due {formatDate(bill.next_due_date)}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{bill.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {frequencyLabel(bill.frequency)} &middot; Due {formatDate(bill.next_due_date)}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="font-semibold">{formatCurrency(bill.amount)}</p>
+                      <Badge variant="secondary" className="inline-flex items-center gap-1">
+                        {catColor && (
+                          <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor }} />
+                        )}
+                        {catColor ? bill.category : "Uncategorized"}
+                      </Badge>
+                    </div>
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="font-semibold">{formatCurrency(bill.amount)}</p>
-                    <Badge variant="secondary">{bill.category}</Badge>
-                  </div>
-                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
 

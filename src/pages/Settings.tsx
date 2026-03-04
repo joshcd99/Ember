@@ -4,12 +4,15 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
+import { useAppData } from "@/contexts/DataContext"
 import { useTheme } from "@/hooks/useTheme"
 import { useHousehold } from "@/hooks/useHousehold"
-import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check } from "lucide-react"
+import { CATEGORY_COLORS } from "@/lib/bill-categories"
+import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus } from "lucide-react"
 
 export function Settings() {
   const { user, signOut, useMockMode } = useAuth()
+  const { billCategories, addBillCategory, deleteBillCategory } = useAppData()
   const { theme, toggleTheme } = useTheme()
   const { household, members, updateHouseholdName, inviteMember, cancelInvite } = useHousehold()
 
@@ -19,6 +22,11 @@ export function Settings() {
 
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviting, setInviting] = useState(false)
+
+  // Bill category management
+  const [newCatName, setNewCatName] = useState("")
+  const [newCatColor, setNewCatColor] = useState<string>(CATEGORY_COLORS[0])
+  const [confirmDeleteCatId, setConfirmDeleteCatId] = useState<string | null>(null)
 
   const activeMembers = members.filter(m => m.status === "active")
   const pendingMembers = members.filter(m => m.status === "pending")
@@ -222,6 +230,103 @@ export function Settings() {
               </p>
             </div>
             <Badge variant="secondary">Coming soon</Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bill Categories */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Tag className="h-5 w-5 text-muted-foreground" />
+            Bill Categories
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Category list */}
+          <div className="space-y-2">
+            {billCategories.map(cat => (
+              <div key={cat.id} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                  <span className="text-sm">{cat.name}</span>
+                  {cat.is_default && <Badge variant="secondary" className="text-xs">Default</Badge>}
+                </div>
+                {confirmDeleteCatId === cat.id ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs"
+                      onClick={async () => { await deleteBillCategory(cat.id); setConfirmDeleteCatId(null) }}
+                    >
+                      Confirm
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => setConfirmDeleteCatId(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    onClick={() => setConfirmDeleteCatId(cat.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Add new category */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Add new</p>
+            <div className="flex items-center gap-2">
+              <Input
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="Category name"
+                className="max-w-xs"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newCatName.trim()) {
+                    addBillCategory({ name: newCatName.trim(), color: newCatColor, is_default: false })
+                    setNewCatName("")
+                    setNewCatColor(CATEGORY_COLORS[0])
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                disabled={!newCatName.trim()}
+                onClick={() => {
+                  if (newCatName.trim()) {
+                    addBillCategory({ name: newCatName.trim(), color: newCatColor, is_default: false })
+                    setNewCatName("")
+                    setNewCatColor(CATEGORY_COLORS[0])
+                  }
+                }}
+              >
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {CATEGORY_COLORS.map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setNewCatColor(color)}
+                  className={`h-5 w-5 rounded-full transition-all ${newCatColor === color ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

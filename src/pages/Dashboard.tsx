@@ -23,7 +23,8 @@ import {
 } from "@/lib/mock-data"
 import { calculatePayoff, getHighestImpactAction } from "@/lib/payoff-engine"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { addDays, isAfter, isBefore } from "date-fns"
+import { addDays } from "date-fns"
+import { getOccurrencesInRange } from "@/lib/recurrence"
 
 export function Dashboard() {
   const { debts, bills, incomeSources, checkins, loading } = useAppData()
@@ -53,13 +54,12 @@ export function Dashboard() {
   const streak = getCheckinStreak(checkins)
   const impactAction = getHighestImpactAction(debts)
 
-  // Upcoming bills (next 7 days)
+  // Upcoming bills (next 7 days) — with recurrence support
   const today = new Date()
   const weekFromNow = addDays(today, 7)
-  const upcomingBills = bills.filter(b => {
-    const due = new Date(b.next_due_date)
-    return (isAfter(due, today) || due.toDateString() === today.toDateString()) && isBefore(due, weekFromNow)
-  })
+  const upcomingBillOccurrences = bills.flatMap(b =>
+    getOccurrencesInRange(b, today, weekFromNow).map(date => ({ bill: b, dueDate: date }))
+  ).sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
 
   // Full empty state — brand new user
   if (!hasDebts && !hasIncome && bills.length === 0) {
@@ -254,22 +254,22 @@ export function Dashboard() {
               <p className="text-sm text-muted-foreground">
                 <Link to="/bills" className="text-primary hover:underline">Add your bills</Link> to see what's coming up.
               </p>
-            ) : upcomingBills.length === 0 ? (
+            ) : upcomingBillOccurrences.length === 0 ? (
               <p className="text-sm text-muted-foreground">All clear for the next 7 days.</p>
             ) : (
               <div className="space-y-3">
-                {upcomingBills.map(bill => (
-                  <div key={bill.id} className="flex items-center justify-between">
+                {upcomingBillOccurrences.map((occ, i) => (
+                  <div key={`${occ.bill.id}-${i}`} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Receipt className="h-4 w-4 text-muted-foreground" />
                       <div>
-                        <p className="text-sm font-medium">{bill.name}</p>
+                        <p className="text-sm font-medium">{occ.bill.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Due {formatDate(bill.next_due_date)}
+                          Due {formatDate(occ.dueDate.toISOString().split("T")[0])}
                         </p>
                       </div>
                     </div>
-                    <span className="text-sm font-medium">{formatCurrency(bill.amount)}</span>
+                    <span className="text-sm font-medium">{formatCurrency(occ.bill.amount)}</span>
                   </div>
                 ))}
               </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
-import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount } from "@/types/database"
+import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory } from "@/types/database"
 import {
   mockDebts,
   mockIncomeSources,
@@ -9,12 +9,15 @@ import {
   mockTransactions,
   mockCheckins,
   mockSavingsAccount,
+  mockBillCategories,
 } from "@/lib/mock-data"
+import { DEFAULT_BILL_CATEGORIES } from "@/lib/bill-categories"
 
 interface DataState {
   debts: Debt[]
   incomeSources: IncomeSource[]
   bills: Bill[]
+  billCategories: BillCategory[]
   transactions: Transaction[]
   checkins: Checkin[]
   savingsAccount: SavingsAccount | null
@@ -34,6 +37,10 @@ interface DataActions {
   addBill: (bill: Omit<Bill, "id" | "household_id">) => Promise<void>
   updateBill: (id: string, updates: Partial<Bill>) => Promise<void>
   deleteBill: (id: string) => Promise<void>
+  // Bill Categories
+  addBillCategory: (category: Omit<BillCategory, "id" | "household_id" | "created_at">) => Promise<void>
+  updateBillCategory: (id: string, updates: Partial<BillCategory>) => Promise<void>
+  deleteBillCategory: (id: string) => Promise<void>
   // Transactions
   addTransaction: (tx: Omit<Transaction, "id" | "user_id" | "household_id">) => Promise<void>
   // Checkins
@@ -52,6 +59,7 @@ export function useData(): AppData {
     debts: [],
     incomeSources: [],
     bills: [],
+    billCategories: [],
     transactions: [],
     checkins: [],
     savingsAccount: null,
@@ -64,6 +72,7 @@ export function useData(): AppData {
         debts: mockDebts,
         incomeSources: mockIncomeSources,
         bills: mockBills,
+        billCategories: mockBillCategories,
         transactions: mockTransactions,
         checkins: mockCheckins,
         savingsAccount: mockSavingsAccount,
@@ -79,10 +88,11 @@ export function useData(): AppData {
 
     setState(s => ({ ...s, loading: true }))
 
-    const [debtsRes, incomeRes, billsRes, txRes, checkinsRes, savingsRes] = await Promise.all([
+    const [debtsRes, incomeRes, billsRes, categoriesRes, txRes, checkinsRes, savingsRes] = await Promise.all([
       supabase.from("debts").select("*").order("created_at", { ascending: true }),
       supabase.from("income_sources").select("*").order("name"),
       supabase.from("bills").select("*").order("next_due_date"),
+      supabase.from("bill_categories").select("*").order("name"),
       supabase.from("transactions").select("*").order("date", { ascending: false }).limit(100),
       supabase.from("checkins").select("*").order("date", { ascending: false }).limit(60),
       supabase.from("savings_accounts").select("*").eq("household_id", householdId).maybeSingle(),
@@ -99,10 +109,25 @@ export function useData(): AppData {
       savingsAccount = (created as SavingsAccount) ?? null
     }
 
+    // Auto-seed default bill categories if none exist
+    let billCategories = (categoriesRes.data as BillCategory[]) ?? []
+    if (billCategories.length === 0) {
+      const seedRows = DEFAULT_BILL_CATEGORIES.map(c => ({
+        household_id: householdId!,
+        name: c.name,
+        color: c.color,
+        is_default: true,
+      }))
+      await supabase.from("bill_categories").insert(seedRows)
+      const { data: seeded } = await supabase.from("bill_categories").select("*").order("name")
+      billCategories = (seeded as BillCategory[]) ?? []
+    }
+
     setState({
       debts: (debtsRes.data as Debt[]) ?? [],
       incomeSources: (incomeRes.data as IncomeSource[]) ?? [],
       bills: (billsRes.data as Bill[]) ?? [],
+      billCategories,
       transactions: (txRes.data as Transaction[]) ?? [],
       checkins: (checkinsRes.data as Checkin[]) ?? [],
       savingsAccount,
@@ -221,6 +246,40 @@ export function useData(): AppData {
     await fetchAll()
   }
 
+  // --- Bill Category CRUD ---
+  const addBillCategory = async (category: Omit<BillCategory, "id" | "household_id" | "created_at">) => {
+    if (useMockMode) {
+      setState(s => ({ ...s, billCategories: [...s.billCategories, { ...category, id: mockId(), household_id: "mock-household", created_at: new Date().toISOString() }] }))
+      return
+    }
+    const { error } = await supabase.from("bill_categories").insert({
+      ...category,
+      household_id: householdId!,
+    })
+    if (error) throw error
+    await fetchAll()
+  }
+
+  const updateBillCategory = async (id: string, updates: Partial<BillCategory>) => {
+    if (useMockMode) {
+      setState(s => ({ ...s, billCategories: s.billCategories.map(c => c.id === id ? { ...c, ...updates } : c) }))
+      return
+    }
+    const { error } = await supabase.from("bill_categories").update(updates).eq("id", id)
+    if (error) throw error
+    await fetchAll()
+  }
+
+  const deleteBillCategory = async (id: string) => {
+    if (useMockMode) {
+      setState(s => ({ ...s, billCategories: s.billCategories.filter(c => c.id !== id) }))
+      return
+    }
+    const { error } = await supabase.from("bill_categories").delete().eq("id", id)
+    if (error) throw error
+    await fetchAll()
+  }
+
   // --- Transaction ---
   const addTransaction = async (tx: Omit<Transaction, "id" | "user_id" | "household_id">) => {
     if (useMockMode) {
@@ -293,6 +352,9 @@ export function useData(): AppData {
     addBill,
     updateBill,
     deleteBill,
+    addBillCategory,
+    updateBillCategory,
+    deleteBillCategory,
     addTransaction,
     logCheckin,
     updateSavingsAccount,
