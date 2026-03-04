@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/EmptyState"
 import { useAppData } from "@/contexts/DataContext"
 import { calculatePayoff } from "@/lib/payoff-engine"
-import { getCheckinStreak } from "@/lib/mock-data"
 import { formatCurrency } from "@/lib/utils"
 import { Sparkles, Share2, X } from "lucide-react"
 
@@ -31,34 +30,44 @@ export function Review() {
   const stats = useMemo(() => {
     if (monthsOfData < 6) return null
 
-    // Period: trailing 12 months or since earliest
-    const now = new Date()
-    const periodStart = new Date(now.getFullYear() - 1, now.getMonth(), 1)
-
     // Debt paid down
     const totalStarting = debts.reduce((s, d) => s + d.starting_balance, 0)
     const totalCurrent = debts.reduce((s, d) => s + d.current_balance, 0)
     const debtPaidDown = totalStarting - totalCurrent
     const debtPaidPercent = totalStarting > 0 ? (debtPaidDown / totalStarting) * 100 : 0
 
-    // Interest avoided: minimums-only interest vs actual (estimated)
-    const minimumsResult = calculatePayoff(debts.map(d => ({ ...d, current_balance: d.starting_balance })), "minimums")
-    const avalancheResult = calculatePayoff(debts, "avalanche")
+    // Interest avoided: compare minimums-only vs avalanche, both from current balances
+    const minimumsResult = calculatePayoff(debts, "minimums")
+    const avalancheResult = calculatePayoff(debts, "avalanche", Math.max(0, Math.floor(debtPaidDown / Math.max(1, monthsOfData))))
     const interestAvoided = Math.max(0, minimumsResult.totalInterest - avalancheResult.totalInterest)
 
     // Biggest single payment
     const debtPayments = transactions.filter(t => t.type === "debt_payment")
     const biggestPayment = debtPayments.reduce((max, t) => t.amount > max.amount ? t : max, { amount: 0, label: "None" } as { amount: number; label: string })
 
-    // Best streak
-    const bestStreak = getCheckinStreak(checkins)
+    // Best streak — find the longest consecutive run in all checkins
+    const completedCheckins = checkins
+      .filter(c => c.completed_at !== null)
+      .map(c => c.date)
+      .sort()
+    let bestStreak = 0
+    let currentStreak = 0
+    for (let i = 0; i < completedCheckins.length; i++) {
+      if (i === 0) {
+        currentStreak = 1
+      } else {
+        const prev = new Date(completedCheckins[i - 1])
+        const curr = new Date(completedCheckins[i])
+        const diffDays = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24))
+        currentStreak = diffDays === 1 ? currentStreak + 1 : 1
+      }
+      bestStreak = Math.max(bestStreak, currentStreak)
+    }
 
-    // Bills paid
-    const expenseTransactions = transactions.filter(t =>
-      t.type === "expense" && new Date(t.date) >= periodStart
-    )
-    const billsPaidCount = expenseTransactions.length + bills.length * Math.min(12, monthsOfData)
-    const billsPaidTotal = bills.reduce((s, b) => s + b.amount, 0) * Math.min(12, monthsOfData)
+    // Bills paid — estimated from current bill count over the data period
+    const monthsCovered = Math.min(12, monthsOfData)
+    const billsPaidCount = bills.length * monthsCovered
+    const billsPaidTotal = bills.reduce((s, b) => s + b.amount, 0) * monthsCovered
 
     // Months ahead of minimums
     const monthsAhead = Math.max(0, minimumsResult.months - avalancheResult.months)
