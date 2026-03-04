@@ -51,6 +51,17 @@ export function useHousehold() {
       user_id: null,
     })
     if (error) throw error
+
+    // Send invite email via Edge Function (non-blocking — row is already created)
+    try {
+      const { error: fnError } = await supabase.functions.invoke("invite-member", {
+        body: { email },
+      })
+      if (fnError) console.warn("useHousehold: invite email failed to send", fnError)
+    } catch (e) {
+      console.warn("useHousehold: invite email failed to send", e)
+    }
+
     await fetchHousehold()
   }
 
