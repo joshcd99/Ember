@@ -11,7 +11,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify the caller is authenticated
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
@@ -22,13 +21,13 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    const adminClient = createClient(supabaseUrl, serviceRoleKey)
 
-    // Verify the JWT is valid using anon key client
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    })
-    const { data: { user }, error: authError } = await anonClient.auth.getUser()
+    // Verify the JWT using the admin client
+    const token = authHeader.replace("Bearer ", "")
+    const { data: { user }, error: authError } = await adminClient.auth.getUser(token)
     if (authError || !user) {
+      console.error("invite-member: auth failed", authError)
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -43,8 +42,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Use admin client to send the invite email
-    const adminClient = createClient(supabaseUrl, serviceRoleKey)
     const siteUrl = Deno.env.get("SITE_URL") ?? "https://ember.auriga.fyi"
 
     const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
