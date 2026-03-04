@@ -17,7 +17,8 @@ import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/moc
 import { calculatePayoff } from "@/lib/payoff-engine"
 import { projectSavings } from "@/lib/savings-engine"
 import { formatCurrency, cn } from "@/lib/utils"
-import { SlidersHorizontal } from "lucide-react"
+import { SlidersHorizontal, RotateCcw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 // --- Constants ---
 
@@ -138,6 +139,14 @@ export function Scenarios() {
   const [customStartYear, setCustomStartYear] = useState(nowYear)
   const [customEndMonth, setCustomEndMonth] = useState((nowMonth + 6) % 12)
   const [customEndYear, setCustomEndYear] = useState(nowYear + (nowMonth + 6 >= 12 ? 1 : 0))
+
+  const resetAll = () => {
+    setExtraSlider(0); setExtraText("0")
+    setIncomeSlider(0); setIncomeText("0")
+    setDebtSplitPct(50)
+    setLumpSumAmountText(""); setLumpSumMonth(nowMonth); setLumpSumYear(nowYear)
+    setPurchaseAmountText(""); setPurchaseMonth(nowMonth); setPurchaseYear(nowYear)
+  }
 
   // Sync lumpSumDebtId when debts change
   useEffect(() => {
@@ -388,7 +397,12 @@ export function Scenarios() {
         {/* ── Left Column: Variables ── */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Variables</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Variables</CardTitle>
+              <Button variant="outline" size="sm" onClick={resetAll}>
+                <RotateCcw className="h-3.5 w-3.5" /> Reset
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-0">
             {/* 1. Extra monthly payment */}
