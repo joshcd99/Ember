@@ -123,9 +123,10 @@ export function getOccurrencesInRange(item: Recurrent, start: Date, end: Date): 
 
 export function recurrenceToMonthlyMultiplier(item: Recurrent): number {
   const rec = normalizeRecurrence(item)
+  // Use annual ratios divided by 12 for accuracy
   switch (rec.unit) {
-    case "day": return 30.44 / rec.interval
-    case "week": return 4.33 / rec.interval
+    case "day": return 365 / rec.interval / 12
+    case "week": return 52 / rec.interval / 12
     case "month": return 1 / rec.interval
     case "year": return 1 / (12 * rec.interval)
   }
