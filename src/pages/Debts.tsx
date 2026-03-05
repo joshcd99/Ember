@@ -58,6 +58,9 @@ const STRATEGY_COLORS = {
   custom: "#c084fc",
 }
 
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+const FULL_MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
 const strategyMeta: Record<DisplayStrategy, { label: string; description: string; icon: React.ReactNode; color: string }> = {
   avalanche: {
     label: "Avalanche",
@@ -235,13 +238,25 @@ export function Debts() {
   const activeTypes = DEBT_TYPE_STACK_ORDER.filter(t =>
     debts.some(d => (d.debt_type ?? "other") === t)
   )
+
+  // Convert month offset to calendar month string (e.g. "2026-03")
+  const now = new Date()
+  const nowYear = now.getFullYear()
+  const nowMonth = now.getMonth()
+  const offsetToCalMonth = (offset: number): string => {
+    const abs = nowYear * 12 + nowMonth + offset
+    const y = Math.floor(abs / 12)
+    const m = abs % 12
+    return `${y}-${String(m + 1).padStart(2, "0")}`
+  }
+
   const step = Math.max(1, Math.floor(selectedResult.months / 40))
-  const stackedChartData: Array<Record<string, number>> = []
+  const stackedChartData: Array<Record<string, number | string>> = []
 
   for (let m = 0; m <= selectedResult.months; m += step) {
     const snap = selectedResult.timeline[m]
     if (!snap) continue
-    const row: Record<string, number> = { month: m }
+    const row: Record<string, number | string> = { calendarMonth: offsetToCalMonth(m) }
     for (const t of activeTypes) {
       row[t] = Math.round((snap.typeBalances[t] ?? 0) * 100) / 100
     }
@@ -249,8 +264,8 @@ export function Debts() {
   }
   // Ensure final month is included
   const lastSnap = selectedResult.timeline[selectedResult.months]
-  if (lastSnap && (stackedChartData.length === 0 || stackedChartData[stackedChartData.length - 1].month !== selectedResult.months)) {
-    const row: Record<string, number> = { month: selectedResult.months }
+  if (lastSnap && (stackedChartData.length === 0 || stackedChartData[stackedChartData.length - 1].calendarMonth !== offsetToCalMonth(selectedResult.months))) {
+    const row: Record<string, number | string> = { calendarMonth: offsetToCalMonth(selectedResult.months) }
     for (const t of activeTypes) row[t] = Math.round((lastSnap.typeBalances[t] ?? 0) * 100) / 100
     stackedChartData.push(row)
   }
@@ -505,9 +520,13 @@ export function Debts() {
               <AreaChart data={stackedChartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
-                  dataKey="month"
-                  label={{ value: "Months", position: "insideBottom", offset: -5 }}
-                  tick={{ fontSize: 12 }}
+                  dataKey="calendarMonth"
+                  tickFormatter={(value: string) => {
+                    const [y, m] = value.split("-").map(Number)
+                    return `${MONTH_NAMES[m - 1]} '${String(y).slice(2)}`
+                  }}
+                  interval="preserveStartEnd"
+                  tick={{ fontSize: 11 }}
                   className="fill-muted-foreground"
                 />
                 <YAxis
@@ -517,7 +536,10 @@ export function Debts() {
                 />
                 <Tooltip
                   formatter={(value, name) => [formatCurrency(Number(value)), DEBT_TYPE_META[name as DebtType]?.label ?? name]}
-                  labelFormatter={(label) => `Month ${label}`}
+                  labelFormatter={(label) => {
+                    const [y, m] = String(label).split("-").map(Number)
+                    return `${FULL_MONTH_NAMES[m - 1]} ${y}`
+                  }}
                   contentStyle={{
                     backgroundColor: "var(--card)",
                     borderColor: "var(--border)",
@@ -543,13 +565,13 @@ export function Debts() {
                   const m = selectedResult.categoryPayoffMonths[t]
                   if (m == null || m === 0) return null
                   const meta = DEBT_TYPE_META[t]
-                  const payoffDate = new Date()
-                  payoffDate.setMonth(payoffDate.getMonth() + m)
-                  const monthLabel = payoffDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                  const calMonth = offsetToCalMonth(m)
+                  const [y, mo] = calMonth.split("-").map(Number)
+                  const monthLabel = `${MONTH_NAMES[mo - 1]} '${String(y).slice(2)}`
                   return (
                     <ReferenceDot
                       key={`milestone-${t}`}
-                      x={m}
+                      x={calMonth}
                       y={0}
                       r={5}
                       fill={DEBT_TYPE_CHART_COLORS[t]}
