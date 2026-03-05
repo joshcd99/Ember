@@ -92,6 +92,8 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
   const handleSave = async () => {
     setSaving(true)
     try {
+      const deferredVal = promoExpanded && promoType === "deferred_interest" && deferredInterestAccrued
+        ? Number(deferredInterestAccrued) : null
       const data = {
         name,
         debt_type: debtType,
@@ -106,8 +108,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
         promo_end_date: promoExpanded && promoEndDate ? promoEndDate : null,
         promo_balance: promoExpanded && promoBalance ? Number(promoBalance) : null,
         regular_apr: promoExpanded ? Number(interestRate) / 100 : null,
-        deferred_interest_accrued: promoExpanded && promoType === "deferred_interest" && deferredInterestAccrued
-          ? Number(deferredInterestAccrued) : null,
+        ...(deferredVal != null ? { deferred_interest_accrued: deferredVal } : {}),
       }
       if (isEdit) {
         await updateDebt(debt.id, data)
