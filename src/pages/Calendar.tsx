@@ -4,10 +4,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useAppData } from "@/contexts/DataContext"
 import { getOccurrencesInRange } from "@/lib/recurrence"
 import { formatCurrency } from "@/lib/utils"
-import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X, Plus } from "lucide-react"
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday, eachDayOfInterval, startOfDay } from "date-fns"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import { BillModal } from "@/components/modals/BillModal"
+import { IncomeSourceModal } from "@/components/modals/IncomeSourceModal"
+import { TransactionModal } from "@/components/modals/TransactionModal"
 
 interface DayEvent {
   type: "bill" | "income" | "debt"
@@ -20,6 +23,10 @@ export function Calendar() {
   const { bills, billCategories, incomeSources, debts, savingsAccount, householdSettings, loading } = useAppData()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const [quickAddDate, setQuickAddDate] = useState("")
+  const [billModalOpen, setBillModalOpen] = useState(false)
+  const [incomeModalOpen, setIncomeModalOpen] = useState(false)
+  const [transactionModalOpen, setTransactionModalOpen] = useState(false)
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -229,14 +236,15 @@ export function Calendar() {
                 return (
                   <button
                     key={key}
-                    onClick={() => setSelectedDay(events.length > 0 ? day : null)}
+                    onClick={() => {
+                      setSelectedDay(day)
+                      setQuickAddDate(key)
+                    }}
                     className={cn(
-                      "flex flex-col h-[130px] p-1.5 border-b border-r border-border text-left transition-colors",
+                      "flex flex-col h-[130px] p-1.5 border-b border-r border-border text-left transition-colors cursor-pointer hover:bg-muted/50",
                       !inMonth && "opacity-40",
                       bgTint,
                       isSelected && "ring-2 ring-primary ring-inset",
-                      events.length > 0 && "cursor-pointer hover:bg-muted/50",
-                      events.length === 0 && "cursor-default",
                     )}
                   >
                     <span className={cn(
@@ -281,7 +289,7 @@ export function Calendar() {
       </Card>
 
       {/* Day detail popover */}
-      {selectedDay && selectedEvents.length > 0 && (
+      {selectedDay && (
         <Card>
           <CardContent>
             <div className="flex items-center justify-between mb-3">
@@ -319,19 +327,42 @@ export function Calendar() {
                 </div>
               ))}
               {/* Day net + running balance */}
-              <div className="border-t border-border pt-2 mt-2 flex items-center justify-between">
-                <span className="text-sm font-medium">Balance after today</span>
-                <span className={cn(
-                  "text-sm font-semibold",
-                  selectedBalance !== undefined && selectedBalance < 0 ? "text-destructive" : "text-foreground",
-                )}>
-                  {selectedBalance !== undefined ? formatCurrency(selectedBalance) : "—"}
-                </span>
+              {selectedEvents.length > 0 && (
+                <div className="border-t border-border pt-2 mt-2 flex items-center justify-between">
+                  <span className="text-sm font-medium">Balance after today</span>
+                  <span className={cn(
+                    "text-sm font-semibold",
+                    selectedBalance !== undefined && selectedBalance < 0 ? "text-destructive" : "text-foreground",
+                  )}>
+                    {selectedBalance !== undefined ? formatCurrency(selectedBalance) : "—"}
+                  </span>
+                </div>
+              )}
+
+              {/* Quick-add buttons */}
+              <div className={cn("flex gap-2", selectedEvents.length > 0 && "border-t border-border pt-2 mt-2")}>
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setBillModalOpen(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add Bill
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setIncomeModalOpen(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add Income
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setTransactionModalOpen(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  One-Time
+                </Button>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Quick-add modals */}
+      <BillModal open={billModalOpen} onClose={() => setBillModalOpen(false)} initialDate={quickAddDate} />
+      <IncomeSourceModal open={incomeModalOpen} onClose={() => setIncomeModalOpen(false)} initialDate={quickAddDate} />
+      <TransactionModal open={transactionModalOpen} onClose={() => setTransactionModalOpen(false)} initialDate={quickAddDate} />
     </div>
   )
 }

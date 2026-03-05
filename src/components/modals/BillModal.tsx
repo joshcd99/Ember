@@ -18,6 +18,7 @@ interface BillModalProps {
   open: boolean
   onClose: () => void
   bill?: Bill | null
+  initialDate?: string
 }
 
 // Preset definitions for quick selection
@@ -36,7 +37,7 @@ function recurrenceToLegacyFrequency(interval: number, unit: RecurrenceUnit): Fr
   return "monthly"
 }
 
-export function BillModal({ open, onClose, bill }: BillModalProps) {
+export function BillModal({ open, onClose, bill, initialDate }: BillModalProps) {
   const { addBill, updateBill, deleteBill, billCategories, addBillCategory, deleteBillCategory } = useAppData()
   const isEdit = !!bill
 
@@ -110,7 +111,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
     } else {
       setName("")
       setAmount("")
-      setNextDueDate("")
+      setNextDueDate(initialDate ?? "")
       setCategory("Other")
       setRecurrenceInterval(1)
       setRecurrenceUnit("month")

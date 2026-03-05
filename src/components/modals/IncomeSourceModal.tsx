@@ -17,6 +17,7 @@ interface IncomeSourceModalProps {
   open: boolean
   onClose: () => void
   source?: IncomeSource | null
+  initialDate?: string
 }
 
 // Preset definitions for quick selection
@@ -35,7 +36,7 @@ function recurrenceToLegacyFrequency(interval: number, unit: RecurrenceUnit): Fr
   return "monthly"
 }
 
-export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalProps) {
+export function IncomeSourceModal({ open, onClose, source, initialDate }: IncomeSourceModalProps) {
   const { addIncomeSource, updateIncomeSource, deleteIncomeSource } = useAppData()
   const isEdit = !!source
 
@@ -103,7 +104,7 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
     } else {
       setName("")
       setAmount("")
-      setNextExpectedDate("")
+      setNextExpectedDate(initialDate ?? "")
       setIsVariable(false)
       setRecurrenceInterval(1)
       setRecurrenceUnit("month")
