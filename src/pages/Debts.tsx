@@ -366,7 +366,7 @@ export function Debts() {
     return (
       <Card
         key={debt.id}
-        className="cursor-pointer hover:border-primary/50 transition-colors"
+        className={cn("cursor-pointer hover:border-primary/50 transition-colors", isPromo && "md:row-span-2")}
         onClick={() => onEdit(debt)}
       >
         <CardHeader>
@@ -570,7 +570,7 @@ export function Debts() {
                 <span className="text-xs font-medium text-muted-foreground">{group.meta.pluralLabel}</span>
                 <div className="flex-1 border-t border-border" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start grid-flow-dense">
                 {group.debts.map(debt => renderDebtCard(debt, openEdit))}
               </div>
             </div>
@@ -588,7 +588,7 @@ export function Debts() {
         })
 
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start grid-flow-dense">
             {sorted.map(debt => renderDebtCard(debt, openEdit))}
           </div>
         )
