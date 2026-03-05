@@ -241,7 +241,8 @@ export function Calendar() {
               const events = eventsMap.get(key) ?? []
               const bal = balanceMap.get(key)
               for (const event of events) {
-                rows.push([key, event.type, event.name, event.amount, bal ?? ""])
+                const amount = event.type === "income" ? event.amount : -event.amount
+                rows.push([key, event.type, event.name, amount, bal ?? ""])
               }
             }
             downloadCSV(`calendar-${format(currentMonth, "yyyy-MM")}.csv`,
