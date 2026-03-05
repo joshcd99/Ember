@@ -236,9 +236,9 @@ export function Debts() {
 
   // Build stacked area chart data from the selected strategy's timeline
   const selectedResult = results[selectedStrategy]
-  const activeTypes = DEBT_TYPE_STACK_ORDER.filter(t =>
-    debts.some(d => (d.debt_type ?? "other") === t)
-  )
+  const activeTypes = DEBT_TYPE_STACK_ORDER
+    .filter(t => debts.some(d => (d.debt_type ?? "other") === t))
+    .sort((a, b) => (selectedResult.categoryPayoffMonths[b] ?? 0) - (selectedResult.categoryPayoffMonths[a] ?? 0))
 
   // Convert month offset to calendar month string (e.g. "2026-03")
   const now = new Date()
