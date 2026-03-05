@@ -24,44 +24,18 @@ export function monthsUntilPromoEnd(debt: Debt, asOf: Date = new Date()): number
  * This is what drives simulations — how many monthly payments fit before the end date.
  * Uses ceiling to count a partial month as a full payment opportunity.
  */
-function paymentPeriodsLeft(debt: Debt, asOf: Date = new Date()): number {
+export function paymentPeriodsLeft(debt: Debt, asOf: Date = new Date()): number {
   const days = daysUntilPromoEnd(debt, asOf)
   return Math.max(0, Math.ceil(days / 30.44)) // average days per month
 }
 
 /**
- * Months elapsed since debt creation. Used for deferred interest accumulation.
+ * For deferred_interest type: returns the user-entered accrued deferred interest.
+ * This replaces the old formula-based calculation that relied on created_at.
  */
-function monthsElapsed(debt: Debt, asOf: Date = new Date()): number {
-  if (!debt.created_at) return 0
-  const created = new Date(debt.created_at)
-  const days = Math.max(0, differenceInDays(asOf, created))
-  return days / 30.44
-}
-
-/**
- * Total months in the promo period (from creation to promo end date).
- */
-function totalPromoMonths(debt: Debt): number {
-  if (!debt.created_at || !debt.promo_end_date) return 0
-  const created = new Date(debt.created_at)
-  const end = new Date(debt.promo_end_date + "T00:00")
-  const days = Math.max(0, differenceInDays(end, created))
-  return days / 30.44
-}
-
-/**
- * For deferred_interest type: interest that has accumulated silently so far.
- * Formula: current_balance × (interest_rate / 12) × months_elapsed
- * Interest accrues monthly at the regular APR against the current balance.
- */
-export function calculateDeferredInterest(debt: Debt, asOf: Date = new Date()): number {
+export function calculateDeferredInterest(debt: Debt): number {
   if (debt.promo_type !== "deferred_interest") return 0
-  if (!debt.current_balance || !debt.interest_rate || !debt.created_at) return 0
-
-  const monthlyRate = debt.interest_rate / 12
-  const elapsed = monthsElapsed(debt, asOf)
-  return debt.current_balance * monthlyRate * elapsed
+  return debt.deferred_interest_accrued ?? 0
 }
 
 /**
@@ -134,18 +108,19 @@ export function extraNeededToMakeDeadline(debt: Debt): number {
 }
 
 /**
- * For deferred_interest: total interest that will dump if deadline missed.
- * Formula: current_balance × (interest_rate / 12) × total_promo_months
- * This is the full amount from creation to promo_end_date.
- * For true_zero: 0 (no deferred interest).
+ * For deferred_interest: total interest at risk if deadline is missed.
+ * = already accrued + forward-looking interest over remaining months.
+ * Forward: promo_balance × (interest_rate / 12) × paymentPeriodsLeft
+ * For true_zero: 0.
  */
 export function interestAtRisk(debt: Debt): number {
   if (debt.promo_type !== "deferred_interest") return 0
-  if (!debt.current_balance || !debt.interest_rate || !debt.promo_end_date) return 0
+  if (!debt.promo_balance || !debt.interest_rate || !debt.promo_end_date) return 0
 
+  const accrued = debt.deferred_interest_accrued ?? 0
   const monthlyRate = debt.interest_rate / 12
-  const months = totalPromoMonths(debt)
-  return debt.current_balance * monthlyRate * months
+  const periods = paymentPeriodsLeft(debt)
+  return accrued + debt.promo_balance * monthlyRate * periods
 }
 
 /**

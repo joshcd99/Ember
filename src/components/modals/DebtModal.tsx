@@ -22,8 +22,7 @@ import { useAppData } from "@/contexts/DataContext"
 import type { Debt, DebtType, PromoType } from "@/types/database"
 import { DEBT_TYPE_META } from "@/lib/debt-types"
 import { formatCurrency, cn } from "@/lib/utils"
-import { calculatePayoff } from "@/lib/payoff-engine"
-import { interestAtRisk, projectedBalanceAtPromoEnd, willMakeDeadline } from "@/lib/promo-engine"
+import { computeInterestSavings } from "@/lib/interest-savings"
 import { Trash2, ChevronDown, AlertTriangle, Info } from "lucide-react"
 
 interface DebtModalProps {
@@ -49,6 +48,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
   const [promoApr, setPromoApr] = useState("0")
   const [promoEndDate, setPromoEndDate] = useState("")
   const [promoBalance, setPromoBalance] = useState("")
+  const [deferredInterestAccrued, setDeferredInterestAccrued] = useState("")
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -69,6 +69,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setPromoApr(debt.promo_apr != null ? String((debt.promo_apr * 100).toFixed(2)) : "0")
       setPromoEndDate(debt.promo_end_date ?? "")
       setPromoBalance(debt.promo_balance != null ? String(debt.promo_balance) : "")
+      setDeferredInterestAccrued(debt.deferred_interest_accrued != null ? String(debt.deferred_interest_accrued) : "")
     } else {
       setName("")
       setDebtType("other")
@@ -83,6 +84,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setPromoApr("0")
       setPromoEndDate("")
       setPromoBalance("")
+      setDeferredInterestAccrued("")
     }
     setConfirmDelete(false)
   }, [debt, open])
@@ -104,6 +106,8 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
         promo_end_date: promoExpanded && promoEndDate ? promoEndDate : null,
         promo_balance: promoExpanded && promoBalance ? Number(promoBalance) : null,
         regular_apr: promoExpanded ? Number(interestRate) / 100 : null,
+        deferred_interest_accrued: promoExpanded && promoType === "deferred_interest" && deferredInterestAccrued
+          ? Number(deferredInterestAccrued) : null,
       }
       if (isEdit) {
         await updateDebt(debt.id, data)
@@ -244,85 +248,24 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
               if (!ap || !mp || ap <= mp || !bal || bal <= 0) return null
               const extra = ap - mp
 
-              const isDeferred = promoExpanded && promoType === "deferred_interest" && promoEndDate
-              const pBal = promoExpanded && promoBalance ? Number(promoBalance) : bal
-              const pApr = promoExpanded ? Number(promoApr) / 100 : rate
-
-              if (isDeferred && pBal > 0) {
-                // Build debt objects from form values for promo engine
-                const formDebt: Debt = {
-                  id: "calc", household_id: "", name: "", debt_type: "other",
-                  current_balance: bal, starting_balance: Number(startingBalance) || bal,
-                  interest_rate: rate, minimum_payment: mp, due_day: 1,
-                  created_at: new Date().toISOString(), last_verified_at: null,
-                  promo_type: "deferred_interest",
-                  promo_apr: pApr,
-                  promo_end_date: promoEndDate,
-                  promo_balance: pBal,
-                  actual_payment: ap,
-                }
-                const minFormDebt: Debt = { ...formDebt, actual_payment: null }
-
-                // Deferred interest at deadline = current_balance × monthly_rate × total_promo_months
-                const deferredDump = interestAtRisk(formDebt)
-
-                // Minimum path: misses deadline → dump + post-dump interest
-                const projBal = projectedBalanceAtPromoEnd(minFormDebt)
-                const postDumpBalance = projBal + deferredDump
-                if (postDumpBalance <= 0.01) return null
-
-                const syntheticDebt: Debt = {
-                  ...formDebt,
-                  current_balance: postDumpBalance,
-                  starting_balance: postDumpBalance,
-                  minimum_payment: mp,
-                  promo_type: null, promo_apr: null,
-                  promo_end_date: null, promo_balance: null,
-                  actual_payment: null,
-                }
-                const minResult = calculatePayoff([syntheticDebt], "minimums")
-                const minTotal = deferredDump + minResult.totalInterest
-
-                // Actual payment path: if beats deadline, total interest = $0
-                let actualTotal = 0
-                if (!willMakeDeadline(formDebt)) {
-                  const actualProjBal = projectedBalanceAtPromoEnd(formDebt)
-                  const actualPostDump = actualProjBal + deferredDump
-                  if (actualPostDump > 0.01) {
-                    const actualSynthetic: Debt = {
-                      ...syntheticDebt,
-                      current_balance: actualPostDump,
-                      starting_balance: actualPostDump,
-                      minimum_payment: ap,
-                    }
-                    const actualResult = calculatePayoff([actualSynthetic], "minimums")
-                    actualTotal = deferredDump + actualResult.totalInterest
-                  }
-                }
-
-                const saved = Math.max(0, minTotal - actualTotal)
-                if (saved < 1) return null
-                return (
-                  <p className="text-xs text-success mt-1.5">
-                    +{formatCurrency(extra)} extra saves ~{formatCurrency(saved)} in interest
-                  </p>
-                )
-              }
-
-              // Standard path: no deferred interest
-              const fakeDebt: Debt = {
+              const formDebt: Debt = {
                 id: "calc", household_id: "", name: "", debt_type: "other",
-                current_balance: bal, starting_balance: bal,
+                current_balance: bal, starting_balance: Number(startingBalance) || bal,
                 interest_rate: rate, minimum_payment: mp, due_day: 1,
                 created_at: new Date().toISOString(), last_verified_at: null,
+                promo_type: promoExpanded ? promoType : null,
+                promo_apr: promoExpanded ? Number(promoApr) / 100 : null,
+                promo_end_date: promoExpanded && promoEndDate ? promoEndDate : null,
+                promo_balance: promoExpanded && promoBalance ? Number(promoBalance) : null,
+                actual_payment: ap,
+                deferred_interest_accrued: promoExpanded && promoType === "deferred_interest" && deferredInterestAccrued
+                  ? Number(deferredInterestAccrued) : null,
               }
-              const minResult = calculatePayoff([fakeDebt], "minimums")
-              const actualResult = calculatePayoff([{ ...fakeDebt, minimum_payment: ap }], "minimums")
-              const saved = Math.max(0, minResult.totalInterest - actualResult.totalInterest)
-              if (saved < 1) return null
+              const { interestSaved } = computeInterestSavings(formDebt)
+              if (interestSaved < 1) return null
               return (
                 <p className="text-xs text-success mt-1.5">
-                  +{formatCurrency(extra)} extra saves ~{formatCurrency(saved)} in interest
+                  +{formatCurrency(extra)} extra saves ~{formatCurrency(interestSaved)} in interest
                 </p>
               )
             })()}
@@ -413,6 +356,17 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
                   onChange={setPromoBalance}
                   hint="Defaults to current balance"
                 />
+                {promoType === "deferred_interest" && (
+                  <Field
+                    label="Deferred Interest Accrued"
+                    type="number"
+                    prefix="$"
+                    placeholder="0"
+                    value={deferredInterestAccrued}
+                    onChange={setDeferredInterestAccrued}
+                    hint="From your statement"
+                  />
+                )}
               </div>
             )}
           </div>

@@ -44,6 +44,8 @@ export interface Debt {
   regular_apr?: number | null
   // Per-debt actual payment
   actual_payment?: number | null
+  // User-entered deferred interest already accrued (from statement)
+  deferred_interest_accrued?: number | null
 }
 
 export interface IncomeSource {
@@ -194,6 +196,7 @@ export interface Database {
           promo_balance?: number | null
           regular_apr?: number | null
           actual_payment?: number | null
+          deferred_interest_accrued?: number | null
         }
         Update: {
           id?: string
@@ -213,6 +216,7 @@ export interface Database {
           promo_balance?: number | null
           regular_apr?: number | null
           actual_payment?: number | null
+          deferred_interest_accrued?: number | null
         }
         Relationships: []
       }

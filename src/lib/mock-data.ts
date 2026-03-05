@@ -74,6 +74,7 @@ export const mockDebts: Debt[] = [
     promo_balance: 3360,
     regular_apr: 0.3299,
     actual_payment: 150,
+    deferred_interest_accrued: 485,
   },
   {
     id: "6",
@@ -93,6 +94,7 @@ export const mockDebts: Debt[] = [
     promo_balance: 639,
     regular_apr: 0.2874,
     actual_payment: null,
+    deferred_interest_accrued: 46,
   },
 ]
 
