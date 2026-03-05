@@ -92,8 +92,8 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const deferredVal = promoExpanded && promoType === "deferred_interest" && deferredInterestAccrued
-        ? Number(deferredInterestAccrued) : null
+      // Only include optional fields when non-null to avoid Supabase
+      // rejecting columns that haven't been migrated yet
       const data = {
         name,
         debt_type: debtType,
@@ -102,13 +102,16 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
         interest_rate: Number(interestRate) / 100,
         minimum_payment: Number(minimumPayment),
         due_day: Number(dueDay),
-        actual_payment: actualPayment ? Number(actualPayment) : null,
-        promo_type: promoExpanded ? promoType : null,
-        promo_apr: promoExpanded ? Number(promoApr) / 100 : null,
-        promo_end_date: promoExpanded && promoEndDate ? promoEndDate : null,
-        promo_balance: promoExpanded && promoBalance ? Number(promoBalance) : null,
-        regular_apr: promoExpanded ? Number(interestRate) / 100 : null,
-        ...(deferredVal != null ? { deferred_interest_accrued: deferredVal } : {}),
+        ...(actualPayment ? { actual_payment: Number(actualPayment) } : {}),
+        ...(promoExpanded ? {
+          promo_type: promoType,
+          promo_apr: Number(promoApr) / 100,
+          promo_end_date: promoEndDate || null,
+          promo_balance: promoBalance ? Number(promoBalance) : null,
+          regular_apr: Number(interestRate) / 100,
+          ...(promoType === "deferred_interest" && deferredInterestAccrued
+            ? { deferred_interest_accrued: Number(deferredInterestAccrued) } : {}),
+        } : {}),
       }
       if (isEdit) {
         await updateDebt(debt.id, data)
