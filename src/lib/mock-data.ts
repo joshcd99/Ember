@@ -1,6 +1,6 @@
 import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory } from "@/types/database"
-import { recurrenceToMonthlyMultiplier, getOccurrencesInRange } from "@/lib/recurrence"
-import { startOfMonth, addMonths } from "date-fns"
+import { recurrenceToMonthlyMultiplier, getNextDueDate, normalizeRecurrence } from "@/lib/recurrence"
+import { startOfDay, addDays, addWeeks, addMonths, addYears } from "date-fns"
 import { DEFAULT_BILL_CATEGORIES } from "@/lib/bill-categories"
 
 export const mockDebts: Debt[] = [
@@ -125,21 +125,31 @@ export function getTotalStartingDebt(debts: Debt[]): number {
   return debts.reduce((sum, d) => sum + d.starting_balance, 0)
 }
 
+/** An item is active if its next occurrence is within one recurrence period from today */
+function isCurrentlyActive(item: IncomeSource | Bill): boolean {
+  const now = startOfDay(new Date())
+  const next = getNextDueDate(item, now)
+  if (!next) return false
+  const rec = normalizeRecurrence(item)
+  let periodEnd: Date
+  switch (rec.unit) {
+    case "day": periodEnd = addDays(now, rec.interval); break
+    case "week": periodEnd = addWeeks(now, rec.interval); break
+    case "month": periodEnd = addMonths(now, rec.interval); break
+    case "year": periodEnd = addYears(now, rec.interval); break
+  }
+  return next <= periodEnd
+}
+
 export function getMonthlyIncome(sources: IncomeSource[]): number {
-  const now = new Date()
-  const monthStart = startOfMonth(now)
-  const monthEnd = startOfMonth(addMonths(now, 1))
   return sources
-    .filter(s => getOccurrencesInRange(s, monthStart, monthEnd).length > 0)
+    .filter(isCurrentlyActive)
     .reduce((sum, s) => sum + s.amount * recurrenceToMonthlyMultiplier(s), 0)
 }
 
 export function getMonthlyBills(bills: Bill[]): number {
-  const now = new Date()
-  const monthStart = startOfMonth(now)
-  const monthEnd = startOfMonth(addMonths(now, 1))
   return bills
-    .filter(b => getOccurrencesInRange(b, monthStart, monthEnd).length > 0)
+    .filter(isCurrentlyActive)
     .reduce((sum, b) => sum + b.amount * recurrenceToMonthlyMultiplier(b), 0)
 }
 
