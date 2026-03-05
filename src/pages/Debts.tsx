@@ -8,14 +8,15 @@ import { DebtModal } from "@/components/modals/DebtModal"
 import { Input } from "@/components/ui/input"
 import { Check, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame } from "lucide-react"
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
+  ReferenceDot,
+  Label,
 } from "recharts"
 import {
   DndContext,
@@ -37,8 +38,9 @@ import { CSS } from "@dnd-kit/utilities"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
+import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS, DEBT_TYPE_STACK_ORDER } from "@/lib/debt-types"
 import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
-import type { Debt, ExtraPaymentType } from "@/types/database"
+import type { Debt, DebtType, ExtraPaymentType } from "@/types/database"
 
 /** 3-tier APR badge: >15% red, 7-15% neutral, <7% green */
 function aprBadgeVariant(rate: number): "destructive" | "default" | "success" {
@@ -47,40 +49,39 @@ function aprBadgeVariant(rate: number): "destructive" | "default" | "success" {
   return "success"
 }
 
-const CHART_COLORS = {
+type DisplayStrategy = Strategy
+
+const STRATEGY_COLORS = {
   avalanche: "#e8845a",
   snowball: "#4ade80",
   minimums: "#a8a29e",
   custom: "#c084fc",
-  grid: "var(--border)",
 }
-
-type DisplayStrategy = Strategy
 
 const strategyMeta: Record<DisplayStrategy, { label: string; description: string; icon: React.ReactNode; color: string }> = {
   avalanche: {
     label: "Avalanche",
     description: "Highest interest rate first. Maximum burn.",
     icon: <TrendingDown className="h-5 w-5" />,
-    color: CHART_COLORS.avalanche,
+    color: STRATEGY_COLORS.avalanche,
   },
   snowball: {
     label: "Snowball",
     description: "Lowest balance first. Quick wins to keep the flame alive.",
     icon: <Snowflake className="h-5 w-5" />,
-    color: CHART_COLORS.snowball,
+    color: STRATEGY_COLORS.snowball,
   },
   minimums: {
     label: "Minimums Only",
     description: "Pay only what's required. A slow smolder.",
     icon: <MinusCircle className="h-5 w-5" />,
-    color: CHART_COLORS.minimums,
+    color: STRATEGY_COLORS.minimums,
   },
   custom: {
     label: "Custom Order",
     description: "Drag to set your own priority. Your rules.",
     icon: <ListOrdered className="h-5 w-5" />,
-    color: CHART_COLORS.custom,
+    color: STRATEGY_COLORS.custom,
   },
 }
 
@@ -229,24 +230,29 @@ export function Debts() {
     custom: calculatePayoff(debts, "custom", extraMonthly, null, customOrder.length > 0 ? customOrder : debts.map(d => d.id)),
   }
 
-  // Build chart data
-  const maxMonths = Math.max(
-    results.avalanche.months,
-    results.snowball.months,
-    results.minimums.months,
-    results.custom.months
+  // Build stacked area chart data from the selected strategy's timeline
+  const selectedResult = results[selectedStrategy]
+  const activeTypes = DEBT_TYPE_STACK_ORDER.filter(t =>
+    debts.some(d => (d.debt_type ?? "other") === t)
   )
-  const step = Math.max(1, Math.floor(maxMonths / 40))
-  const chartData: Array<Record<string, number>> = []
+  const step = Math.max(1, Math.floor(selectedResult.months / 40))
+  const stackedChartData: Array<Record<string, number>> = []
 
-  for (let m = 0; m <= maxMonths; m += step) {
-    chartData.push({
-      month: m,
-      Avalanche: results.avalanche.timeline[m]?.totalBalance ?? 0,
-      Snowball: results.snowball.timeline[m]?.totalBalance ?? 0,
-      "Minimums Only": results.minimums.timeline[m]?.totalBalance ?? 0,
-      Custom: results.custom.timeline[m]?.totalBalance ?? 0,
-    })
+  for (let m = 0; m <= selectedResult.months; m += step) {
+    const snap = selectedResult.timeline[m]
+    if (!snap) continue
+    const row: Record<string, number> = { month: m }
+    for (const t of activeTypes) {
+      row[t] = Math.round((snap.typeBalances[t] ?? 0) * 100) / 100
+    }
+    stackedChartData.push(row)
+  }
+  // Ensure final month is included
+  const lastSnap = selectedResult.timeline[selectedResult.months]
+  if (lastSnap && (stackedChartData.length === 0 || stackedChartData[stackedChartData.length - 1].month !== selectedResult.months)) {
+    const row: Record<string, number> = { month: selectedResult.months }
+    for (const t of activeTypes) row[t] = Math.round((lastSnap.typeBalances[t] ?? 0) * 100) / 100
+    stackedChartData.push(row)
   }
 
   return (
@@ -281,6 +287,13 @@ export function Debts() {
                     <CardTitle className="text-base">{debt.name}</CardTitle>
                   </div>
                   <div className="flex items-center gap-2">
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+                      style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[debt.debt_type ?? "other"] + "1a", color: DEBT_TYPE_CHART_COLORS[debt.debt_type ?? "other"] }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[debt.debt_type ?? "other"] }} />
+                      {DEBT_TYPE_META[debt.debt_type ?? "other"].label}
+                    </span>
                     <Badge variant={aprBadgeVariant(debt.interest_rate)}>
                       {formatPercent(debt.interest_rate)} APR
                     </Badge>
@@ -478,16 +491,18 @@ export function Debts() {
         </Card>
       )}
 
-      {/* Chart */}
+      {/* Stacked area chart by debt type */}
       <Card>
         <CardHeader>
           <CardTitle>Projected Debt Over Time</CardTitle>
-          <CardDescription>All strategies overlaid for comparison</CardDescription>
+          <CardDescription>
+            {strategyMeta[selectedStrategy].label} strategy — stacked by debt type
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <AreaChart data={stackedChartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="month"
@@ -501,7 +516,7 @@ export function Debts() {
                   className="fill-muted-foreground"
                 />
                 <Tooltip
-                  formatter={(value) => formatCurrency(Number(value))}
+                  formatter={(value, name) => [formatCurrency(Number(value)), DEBT_TYPE_META[name as DebtType]?.label ?? name]}
                   labelFormatter={(label) => `Month ${label}`}
                   contentStyle={{
                     backgroundColor: "var(--card)",
@@ -510,13 +525,57 @@ export function Debts() {
                     color: "var(--fg)",
                   }}
                 />
-                <Legend />
-                <Line type="monotone" dataKey="Avalanche" stroke={CHART_COLORS.avalanche} strokeWidth={selectedStrategy === "avalanche" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "avalanche" ? 1 : 0.5} />
-                <Line type="monotone" dataKey="Snowball" stroke={CHART_COLORS.snowball} strokeWidth={selectedStrategy === "snowball" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "snowball" ? 1 : 0.5} />
-                <Line type="monotone" dataKey="Minimums Only" stroke={CHART_COLORS.minimums} strokeWidth={selectedStrategy === "minimums" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "minimums" ? 1 : 0.5} />
-                <Line type="monotone" dataKey="Custom" stroke={CHART_COLORS.custom} strokeWidth={selectedStrategy === "custom" ? 3 : 1.5} dot={false} opacity={selectedStrategy === "custom" ? 1 : 0.5} />
-              </LineChart>
+                {activeTypes.map(t => (
+                  <Area
+                    key={t}
+                    type="monotone"
+                    dataKey={t}
+                    stackId="debt"
+                    stroke={DEBT_TYPE_CHART_COLORS[t]}
+                    fill={DEBT_TYPE_CHART_COLORS[t]}
+                    fillOpacity={0.3}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                ))}
+                {/* Milestone markers where each type hits zero */}
+                {activeTypes.map(t => {
+                  const m = selectedResult.categoryPayoffMonths[t]
+                  if (m == null || m === 0) return null
+                  const meta = DEBT_TYPE_META[t]
+                  const payoffDate = new Date()
+                  payoffDate.setMonth(payoffDate.getMonth() + m)
+                  const monthLabel = payoffDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                  return (
+                    <ReferenceDot
+                      key={`milestone-${t}`}
+                      x={m}
+                      y={0}
+                      r={5}
+                      fill={DEBT_TYPE_CHART_COLORS[t]}
+                      stroke="var(--card)"
+                      strokeWidth={2}
+                    >
+                      <Label
+                        value={`${meta.emoji} ${meta.label.split(" ")[0]} done · ${monthLabel}`}
+                        position="top"
+                        offset={10}
+                        style={{ fontSize: 10, fill: DEBT_TYPE_CHART_COLORS[t], fontWeight: 600 }}
+                      />
+                    </ReferenceDot>
+                  )
+                })}
+              </AreaChart>
             </ResponsiveContainer>
+          </div>
+          {/* Custom legend */}
+          <div className="flex flex-wrap gap-4 mt-3 justify-center">
+            {activeTypes.map(t => (
+              <div key={t} className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[t] }} />
+                <span className="text-xs text-muted-foreground">{DEBT_TYPE_META[t].label}</span>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

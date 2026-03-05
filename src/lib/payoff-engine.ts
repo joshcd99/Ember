@@ -1,4 +1,4 @@
-import type { Debt } from "@/types/database"
+import type { Debt, DebtType } from "@/types/database"
 
 export type Strategy = "avalanche" | "snowball" | "minimums" | "custom"
 
@@ -6,15 +6,19 @@ interface MonthSnapshot {
   month: number
   totalBalance: number
   balances: Record<string, number>
+  /** Balance totals per debt_type */
+  typeBalances: Record<string, number>
 }
 
-interface PayoffResult {
+export interface PayoffResult {
   strategy: Strategy
   months: number
   totalInterest: number
   payoffDate: Date
   timeline: MonthSnapshot[]
-  debtPayoffOrder: { id: string; name: string; month: number }[]
+  debtPayoffOrder: { id: string; name: string; debtType: DebtType; month: number }[]
+  /** Month index when the last debt of each type reaches zero */
+  categoryPayoffMonths: Record<string, number>
 }
 
 function sortDebts(debts: Debt[], strategy: Strategy, customOrder?: string[]): Debt[] {
@@ -53,6 +57,7 @@ export function calculatePayoff(
       payoffDate: new Date(),
       timeline: [],
       debtPayoffOrder: [],
+      categoryPayoffMonths: {},
     }
   }
 
@@ -67,8 +72,23 @@ export function calculatePayoff(
     minimums[d.id] = d.minimum_payment
   }
 
+  // Map debt id → debt_type for grouping
+  const debtTypeMap: Record<string, DebtType> = {}
+  for (const d of debts) {
+    debtTypeMap[d.id] = d.debt_type ?? "other"
+  }
+
+  const computeTypeBalances = () => {
+    const tb: Record<string, number> = {}
+    for (const id of Object.keys(balances)) {
+      const t = debtTypeMap[id]
+      tb[t] = (tb[t] ?? 0) + balances[id]
+    }
+    return tb
+  }
+
   const timeline: MonthSnapshot[] = []
-  const debtPayoffOrder: { id: string; name: string; month: number }[] = []
+  const debtPayoffOrder: PayoffResult["debtPayoffOrder"] = []
   let totalInterest = 0
   let month = 0
   const maxMonths = 600 // 50 year cap
@@ -78,6 +98,7 @@ export function calculatePayoff(
     month: 0,
     totalBalance: Object.values(balances).reduce((s, b) => s + b, 0),
     balances: { ...balances },
+    typeBalances: computeTypeBalances(),
   })
 
   while (month < maxMonths) {
@@ -127,7 +148,7 @@ export function calculatePayoff(
         !debtPayoffOrder.find(p => p.id === d.id)
       ) {
         balances[d.id] = 0
-        debtPayoffOrder.push({ id: d.id, name: d.name, month })
+        debtPayoffOrder.push({ id: d.id, name: d.name, debtType: debtTypeMap[d.id], month })
 
         // Snowball / avalanche: freed-up minimum rolls into extra
         if (strategy !== "minimums") {
@@ -140,7 +161,17 @@ export function calculatePayoff(
       month,
       totalBalance: Object.values(balances).reduce((s, b) => s + b, 0),
       balances: { ...balances },
+      typeBalances: computeTypeBalances(),
     })
+  }
+
+  // Compute per-category payoff month (last debt of that type to hit zero)
+  const categoryPayoffMonths: Record<string, number> = {}
+  for (const entry of debtPayoffOrder) {
+    categoryPayoffMonths[entry.debtType] = Math.max(
+      categoryPayoffMonths[entry.debtType] ?? 0,
+      entry.month
+    )
   }
 
   const payoffDate = new Date()
@@ -153,6 +184,7 @@ export function calculatePayoff(
     payoffDate,
     timeline,
     debtPayoffOrder,
+    categoryPayoffMonths,
   }
 }
 

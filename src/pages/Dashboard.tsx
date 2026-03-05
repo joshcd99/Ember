@@ -25,6 +25,9 @@ import {
 } from "@/lib/mock-data"
 import { calculatePayoff, getHighestImpactAction, type Strategy } from "@/lib/payoff-engine"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
+import type { DebtType } from "@/types/database"
+import { differenceInDays } from "date-fns"
 import { addDays } from "date-fns"
 import { getOccurrencesInRange } from "@/lib/recurrence"
 
@@ -247,6 +250,79 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Debt category tiles */}
+      {hasDebts && (() => {
+        const typeGroups = new Map<DebtType, { balance: number; starting: number; count: number }>()
+        for (const d of debts) {
+          const t = d.debt_type ?? "other"
+          const g = typeGroups.get(t) ?? { balance: 0, starting: 0, count: 0 }
+          g.balance += d.current_balance
+          g.starting += d.starting_balance
+          g.count++
+          typeGroups.set(t, g)
+        }
+        const catPayoff = payoffResult?.categoryPayoffMonths ?? {}
+        const tiles = Array.from(typeGroups.entries()).filter(([, g]) => g.count > 0)
+        if (tiles.length <= 1) return null
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-sm font-medium text-muted-foreground whitespace-nowrap">By debt type</h2>
+              <div className="flex-1 border-t border-border" />
+            </div>
+            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+              {tiles.map(([type, group]) => {
+                const meta = DEBT_TYPE_META[type]
+                const chartColor = DEBT_TYPE_CHART_COLORS[type]
+                const paidOff = group.starting - group.balance
+                const pct = group.starting > 0 ? (paidOff / group.starting) * 100 : 0
+                const isDone = group.balance <= 0.01 && group.starting > 0
+                const payoffMonth = catPayoff[type]
+                const payoffDate = payoffMonth != null ? new Date() : null
+                if (payoffDate) payoffDate.setMonth(payoffDate.getMonth() + payoffMonth!)
+                const daysLeft = payoffDate ? Math.max(0, differenceInDays(payoffDate, new Date())) : null
+
+                return (
+                  <Card key={type} className="overflow-hidden">
+                    <div className="h-1" style={{ backgroundColor: chartColor }} />
+                    <CardContent className="pt-4 space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: chartColor }} />
+                        <span className="text-xs font-medium text-muted-foreground">{meta.label}</span>
+                      </div>
+                      {isDone ? (
+                        <>
+                          <p className="font-display text-xl text-success">🎉 Done</p>
+                          <Progress value={100} className="h-1.5" />
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-display text-xl">{formatCurrency(group.balance)}</p>
+                          <Progress value={pct} className="h-1.5" />
+                          <p className="text-[10px] text-muted-foreground">
+                            {formatCurrency(paidOff)} paid · {pct.toFixed(0)}%
+                          </p>
+                          {payoffDate && (
+                            <div className="space-y-0.5">
+                              <p className="text-[10px] text-muted-foreground">{formatDate(payoffDate)}</p>
+                              {daysLeft != null && (
+                                <p className="text-xs font-semibold" style={{ color: chartColor }}>
+                                  {daysLeft} days
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Cash flow register */}
       <CashFlowRegister />

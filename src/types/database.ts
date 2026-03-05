@@ -1,5 +1,6 @@
 export type Frequency = "weekly" | "biweekly" | "monthly"
 export type TransactionType = "income" | "expense" | "debt_payment"
+export type DebtType = "credit_card" | "personal_loan" | "auto_loan" | "student_loan" | "other"
 
 // Recurrence types for bills
 export type RecurrenceType = "weekly" | "biweekly" | "monthly" | "yearly" | "custom"
@@ -25,6 +26,7 @@ export interface Debt {
   id: string
   household_id: string
   name: string
+  debt_type: DebtType
   current_balance: number
   starting_balance: number
   interest_rate: number
@@ -168,6 +170,7 @@ export interface Database {
           id?: string
           household_id: string
           name: string
+          debt_type?: string
           current_balance: number
           starting_balance: number
           interest_rate: number
@@ -180,6 +183,7 @@ export interface Database {
           id?: string
           household_id?: string
           name?: string
+          debt_type?: string
           current_balance?: number
           starting_balance?: number
           interest_rate?: number

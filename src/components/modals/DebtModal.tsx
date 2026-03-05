@@ -18,7 +18,8 @@ import {
   ResponsiveContainer,
 } from "recharts"
 import { useAppData } from "@/contexts/DataContext"
-import type { Debt } from "@/types/database"
+import type { Debt, DebtType } from "@/types/database"
+import { DEBT_TYPE_META } from "@/lib/debt-types"
 import { formatCurrency } from "@/lib/utils"
 import { Trash2 } from "lucide-react"
 
@@ -38,12 +39,14 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
   const [interestRate, setInterestRate] = useState("")
   const [minimumPayment, setMinimumPayment] = useState("")
   const [dueDay, setDueDay] = useState("")
+  const [debtType, setDebtType] = useState<DebtType>("other")
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     if (debt) {
       setName(debt.name)
+      setDebtType(debt.debt_type ?? "other")
       setCurrentBalance(String(debt.current_balance))
       setStartingBalance(String(debt.starting_balance))
       setInterestRate(String((debt.interest_rate * 100).toFixed(2)))
@@ -51,6 +54,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setDueDay(String(debt.due_day))
     } else {
       setName("")
+      setDebtType("other")
       setCurrentBalance("")
       setStartingBalance("")
       setInterestRate("")
@@ -65,6 +69,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
     try {
       const data = {
         name,
+        debt_type: debtType,
         current_balance: Number(currentBalance),
         starting_balance: Number(startingBalance) || Number(currentBalance),
         interest_rate: Number(interestRate) / 100,
@@ -118,6 +123,33 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
 
         <div className="space-y-4">
           <Field label="Name" placeholder="e.g., Chase Visa" value={name} onChange={setName} />
+
+          {/* Debt type selector */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Type</label>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(DEBT_TYPE_META) as DebtType[]).map(type => {
+                const meta = DEBT_TYPE_META[type]
+                const isSelected = debtType === type
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setDebtType(type)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                      isSelected
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: meta.color }} />
+                    {meta.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Field
               label="Current Balance"
