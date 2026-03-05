@@ -33,7 +33,8 @@ const DialogContent = forwardRef<
       ref={ref}
       onPointerDownOutside={(e) => {
         // Don't dismiss dialog when clicking inside a portalled date picker
-        if ((e.target as HTMLElement).closest?.("[data-datepicker-dropdown]")) {
+        const originalTarget = (e.detail?.originalEvent?.target ?? e.target) as HTMLElement
+        if (originalTarget.closest?.("[data-datepicker-dropdown]")) {
           e.preventDefault()
         }
       }}
