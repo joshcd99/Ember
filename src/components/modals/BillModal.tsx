@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { useAppData } from "@/contexts/DataContext"
 import type { Bill, Frequency, RecurrenceUnit, RecurrenceEndType } from "@/types/database"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Trash2, Plus, X } from "lucide-react"
 
 interface BillModalProps {
@@ -258,10 +259,9 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Next Due Date</label>
-              <Input
-                type="date"
+              <DatePicker
                 value={nextDueDate}
-                onChange={(e) => setNextDueDate(e.target.value)}
+                onChange={setNextDueDate}
               />
             </div>
           </div>
@@ -477,11 +477,10 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
                       />
                       <span className="text-sm">On date</span>
                       {recurrenceEndType === "on_date" && (
-                        <Input
-                          type="date"
+                        <DatePicker
                           value={recurrenceEndDate}
-                          onChange={(e) => setRecurrenceEndDate(e.target.value)}
-                          className="h-8 w-40 text-sm"
+                          onChange={setRecurrenceEndDate}
+                          className="w-40"
                         />
                       )}
                     </label>

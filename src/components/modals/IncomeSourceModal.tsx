@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAppData } from "@/contexts/DataContext"
 import type { IncomeSource, Frequency, RecurrenceUnit, RecurrenceEndType } from "@/types/database"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Trash2 } from "lucide-react"
 
 interface IncomeSourceModalProps {
@@ -233,10 +234,9 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Next Expected Date</label>
-              <Input
-                type="date"
+              <DatePicker
                 value={nextExpectedDate}
-                onChange={(e) => setNextExpectedDate(e.target.value)}
+                onChange={setNextExpectedDate}
               />
             </div>
           </div>
@@ -373,11 +373,10 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
                       />
                       <span className="text-sm">On date</span>
                       {recurrenceEndType === "on_date" && (
-                        <Input
-                          type="date"
+                        <DatePicker
                           value={recurrenceEndDate}
-                          onChange={(e) => setRecurrenceEndDate(e.target.value)}
-                          className="h-8 w-40 text-sm"
+                          onChange={setRecurrenceEndDate}
+                          className="w-40"
                         />
                       )}
                     </label>
