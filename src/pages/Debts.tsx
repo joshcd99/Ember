@@ -8,8 +8,8 @@ import { DebtModal } from "@/components/modals/DebtModal"
 import { Input } from "@/components/ui/input"
 import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame } from "lucide-react"
 import {
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -36,7 +36,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
-import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS, DEBT_TYPE_STACK_ORDER } from "@/lib/debt-types"
+import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
 import type { Debt, DebtType, ExtraPaymentType } from "@/types/database"
 
@@ -234,9 +234,9 @@ export function Debts() {
 
   // Build stacked area chart data from the selected strategy's timeline
   const selectedResult = results[selectedStrategy]
-  const activeTypes = DEBT_TYPE_STACK_ORDER
-    .filter(t => debts.some(d => (d.debt_type ?? "other") === t))
-    .sort((a, b) => (selectedResult.categoryPayoffMonths[b] ?? 0) - (selectedResult.categoryPayoffMonths[a] ?? 0))
+  const activeTypes = (Object.keys(DEBT_TYPE_META) as DebtType[]).filter(t =>
+    debts.some(d => (d.debt_type ?? "other") === t)
+  )
 
   // Convert month offset to calendar month string (e.g. "2026-03")
   const now = new Date()
@@ -249,14 +249,9 @@ export function Debts() {
     return `${y}-${String(m + 1).padStart(2, "0")}`
   }
 
-  const step = Math.max(1, Math.floor(selectedResult.months / 40))
-  // Collect months that must appear in the chart (payoff milestones + final)
-  const mustInclude = new Set<number>([selectedResult.months])
-  for (const t of activeTypes) {
-    const m = selectedResult.categoryPayoffMonths[t]
-    if (m != null && m > 0) mustInclude.add(m)
-  }
-  const stackedChartData: Array<Record<string, number | string>> = []
+  // Build chart data: one line per debt type + total
+  const step = Math.max(1, Math.floor(selectedResult.months / 60))
+  const chartData: Array<Record<string, number | string>> = []
 
   for (let m = 0; m <= selectedResult.months; m += step) {
     const snap = selectedResult.timeline[m]
@@ -265,23 +260,16 @@ export function Debts() {
     for (const t of activeTypes) {
       row[t] = Math.round((snap.typeBalances[t] ?? 0) * 100) / 100
     }
-    stackedChartData.push(row)
-    // Insert any must-include months that fall before the next step
-    for (const mi of mustInclude) {
-      if (mi > m && mi < m + step && selectedResult.timeline[mi]) {
-        const snap2 = selectedResult.timeline[mi]
-        const row2: Record<string, number | string> = { calendarMonth: offsetToCalMonth(mi) }
-        for (const t of activeTypes) row2[t] = Math.round((snap2.typeBalances[t] ?? 0) * 100) / 100
-        stackedChartData.push(row2)
-      }
-    }
+    row.total = Math.round(snap.totalBalance * 100) / 100
+    chartData.push(row)
   }
   // Ensure final month is included
   const lastSnap = selectedResult.timeline[selectedResult.months]
-  if (lastSnap && (stackedChartData.length === 0 || stackedChartData[stackedChartData.length - 1].calendarMonth !== offsetToCalMonth(selectedResult.months))) {
+  if (lastSnap && (chartData.length === 0 || chartData[chartData.length - 1].calendarMonth !== offsetToCalMonth(selectedResult.months))) {
     const row: Record<string, number | string> = { calendarMonth: offsetToCalMonth(selectedResult.months) }
     for (const t of activeTypes) row[t] = Math.round((lastSnap.typeBalances[t] ?? 0) * 100) / 100
-    stackedChartData.push(row)
+    row.total = Math.round(lastSnap.totalBalance * 100) / 100
+    chartData.push(row)
   }
 
   return (
@@ -520,18 +508,18 @@ export function Debts() {
         </Card>
       )}
 
-      {/* Stacked area chart by debt type */}
+      {/* Debt projection chart */}
       <Card>
         <CardHeader>
           <CardTitle>Projected Debt Over Time</CardTitle>
           <CardDescription>
-            {strategyMeta[selectedStrategy].label} strategy — stacked by debt type
+            {strategyMeta[selectedStrategy].label} strategy — by debt type
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stackedChartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+              <LineChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="calendarMonth"
@@ -549,7 +537,10 @@ export function Debts() {
                   className="fill-muted-foreground"
                 />
                 <Tooltip
-                  formatter={(value, name) => [formatCurrency(Number(value)), DEBT_TYPE_META[name as DebtType]?.label ?? name]}
+                  formatter={(value, name) => {
+                    const label = name === "total" ? "Total" : (DEBT_TYPE_META[name as DebtType]?.label ?? name)
+                    return [formatCurrency(Number(value)), label]
+                  }}
                   labelFormatter={(label) => {
                     const [y, m] = String(label).split("-").map(Number)
                     return `${FULL_MONTH_NAMES[m - 1]} ${y}`
@@ -561,23 +552,36 @@ export function Debts() {
                     color: "var(--fg)",
                   }}
                 />
+                {/* Total balance line */}
+                <Line
+                  type="linear"
+                  dataKey="total"
+                  stroke="var(--fg)"
+                  strokeWidth={2}
+                  strokeDasharray="6 3"
+                  dot={false}
+                  opacity={0.4}
+                />
+                {/* Per-type lines */}
                 {activeTypes.map(t => (
-                  <Area
+                  <Line
                     key={t}
                     type="linear"
                     dataKey={t}
-                    stackId="debt"
-                    stroke="none"
-                    fill={DEBT_TYPE_CHART_COLORS[t]}
-                    fillOpacity={1}
+                    stroke={DEBT_TYPE_CHART_COLORS[t]}
+                    strokeWidth={2.5}
                     dot={false}
                   />
                 ))}
-              </AreaChart>
+              </LineChart>
             </ResponsiveContainer>
           </div>
-          {/* Legend + milestones */}
+          {/* Legend with payoff dates */}
           <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 justify-center">
+            <div className="flex items-center gap-1.5">
+              <span className="w-4 border-t-2 border-dashed" style={{ borderColor: "var(--fg)", opacity: 0.4 }} />
+              <span className="text-xs text-muted-foreground">Total</span>
+            </div>
             {activeTypes.map(t => {
               const m = selectedResult.categoryPayoffMonths[t]
               let payoffLabel = ""
