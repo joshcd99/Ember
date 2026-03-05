@@ -22,6 +22,7 @@ import { useAppData } from "@/contexts/DataContext"
 import type { Debt, DebtType, PromoType } from "@/types/database"
 import { DEBT_TYPE_META } from "@/lib/debt-types"
 import { formatCurrency, cn } from "@/lib/utils"
+import { calculatePayoff } from "@/lib/payoff-engine"
 import { Trash2, ChevronDown, AlertTriangle, Info } from "lucide-react"
 
 interface DebtModalProps {
@@ -47,7 +48,6 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
   const [promoApr, setPromoApr] = useState("0")
   const [promoEndDate, setPromoEndDate] = useState("")
   const [promoBalance, setPromoBalance] = useState("")
-  const [regularApr, setRegularApr] = useState("")
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -68,7 +68,6 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setPromoApr(debt.promo_apr != null ? String((debt.promo_apr * 100).toFixed(2)) : "0")
       setPromoEndDate(debt.promo_end_date ?? "")
       setPromoBalance(debt.promo_balance != null ? String(debt.promo_balance) : "")
-      setRegularApr(debt.regular_apr != null ? String((debt.regular_apr * 100).toFixed(2)) : "")
     } else {
       setName("")
       setDebtType("other")
@@ -83,7 +82,6 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setPromoApr("0")
       setPromoEndDate("")
       setPromoBalance("")
-      setRegularApr("")
     }
     setConfirmDelete(false)
   }, [debt, open])
@@ -104,7 +102,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
         promo_apr: promoExpanded ? Number(promoApr) / 100 : null,
         promo_end_date: promoExpanded && promoEndDate ? promoEndDate : null,
         promo_balance: promoExpanded && promoBalance ? Number(promoBalance) : null,
-        regular_apr: promoExpanded && regularApr ? Number(regularApr) / 100 : null,
+        regular_apr: promoExpanded ? Number(interestRate) / 100 : null,
       }
       if (isEdit) {
         await updateDebt(debt.id, data)
@@ -227,15 +225,41 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
           </div>
 
           {/* Actually paying field */}
-          <Field
-            label="Actually Paying"
-            type="number"
-            prefix="$"
-            placeholder="Leave blank to use minimum"
-            value={actualPayment}
-            onChange={setActualPayment}
-            hint="What you're actually paying monthly on this debt"
-          />
+          <div>
+            <Field
+              label="Actually Paying"
+              type="number"
+              prefix="$"
+              placeholder="Leave blank to use minimum"
+              value={actualPayment}
+              onChange={setActualPayment}
+              hint="What you're actually paying monthly on this debt"
+            />
+            {(() => {
+              const ap = Number(actualPayment)
+              const mp = Number(minimumPayment)
+              const bal = Number(currentBalance)
+              const rate = Number(interestRate) / 100
+              if (!ap || !mp || ap <= mp || !bal || bal <= 0) return null
+              const extra = ap - mp
+              // Quick interest savings: compare min-only vs actual payment
+              const fakeDebt: Debt = {
+                id: "calc", household_id: "", name: "", debt_type: "other",
+                current_balance: bal, starting_balance: bal,
+                interest_rate: rate, minimum_payment: mp, due_day: 1,
+                created_at: new Date().toISOString(), last_verified_at: null,
+              }
+              const minResult = calculatePayoff([fakeDebt], "minimums")
+              const actualResult = calculatePayoff([{ ...fakeDebt, minimum_payment: ap }], "minimums")
+              const saved = Math.max(0, minResult.totalInterest - actualResult.totalInterest)
+              if (saved < 1) return null
+              return (
+                <p className="text-xs text-success mt-1.5">
+                  +{formatCurrency(extra)} extra saves ~{formatCurrency(saved)} in interest
+                </p>
+              )
+            })()}
+          </div>
 
           {/* Promotional balance section */}
           <div className="border border-border rounded-lg">
@@ -313,26 +337,15 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="Promo Balance"
-                    type="number"
-                    prefix="$"
-                    placeholder={currentBalance || "0"}
-                    value={promoBalance}
-                    onChange={setPromoBalance}
-                    hint="Defaults to current balance"
-                  />
-                  <Field
-                    label="Regular APR (post-promo)"
-                    type="number"
-                    suffix="%"
-                    placeholder={interestRate || "0"}
-                    value={regularApr}
-                    onChange={setRegularApr}
-                    hint="Rate after promo ends"
-                  />
-                </div>
+                <Field
+                  label="Promo Balance"
+                  type="number"
+                  prefix="$"
+                  placeholder={currentBalance || "0"}
+                  value={promoBalance}
+                  onChange={setPromoBalance}
+                  hint="Defaults to current balance"
+                />
               </div>
             )}
           </div>

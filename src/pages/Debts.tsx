@@ -390,8 +390,8 @@ export function Debts() {
                   {DEBT_TYPE_META[type].label}
                 </span>
               )}
-              <Badge variant={aprBadgeVariant(debt.regular_apr ?? debt.interest_rate)}>
-                {formatPercent(debt.regular_apr ?? debt.interest_rate)} APR
+              <Badge variant={aprBadgeVariant(debt.interest_rate)}>
+                {formatPercent(debt.interest_rate)} APR
               </Badge>
               <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -480,7 +480,7 @@ export function Debts() {
                 Remaining promo balance: <span className="font-medium">{formatCurrency(debt.promo_balance ?? 0)}</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                After deadline: {formatPercent(debt.regular_apr ?? 0)} APR applies to remaining balance
+                After deadline: {formatPercent(debt.interest_rate)} APR applies to remaining balance
               </p>
               {!promoOnTrack && (
                 <p className="text-xs text-warning flex items-center gap-1">

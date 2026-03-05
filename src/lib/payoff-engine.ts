@@ -94,12 +94,27 @@ export function calculatePayoff(
 
   const ordered = sortDebts(debts, strategy, customOrder)
   const balances: Record<string, number> = {}
-  const rates: Record<string, number> = {}
+  const promoRates: Record<string, number> = {} // rate during promo period
+  const regularRates: Record<string, number> = {} // rate after promo ends
+  const promoEndMonths: Record<string, number> = {} // month index when promo expires
   const minimums: Record<string, number> = {}
 
+  const now = new Date()
   for (const d of debts) {
     balances[d.id] = d.current_balance
-    rates[d.id] = d.interest_rate / 12
+    regularRates[d.id] = d.interest_rate / 12
+
+    // For active promos, use promo_apr during the promo period
+    if (d.promo_type && d.promo_apr != null && d.promo_end_date) {
+      const endDate = new Date(d.promo_end_date + "T00:00")
+      const monthsUntilEnd = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (30.44 * 24 * 60 * 60 * 1000)))
+      promoRates[d.id] = d.promo_apr / 12
+      promoEndMonths[d.id] = monthsUntilEnd
+    } else {
+      promoRates[d.id] = d.interest_rate / 12
+      promoEndMonths[d.id] = 0 // no promo, use regular rate immediately
+    }
+
     minimums[d.id] = d.minimum_payment
   }
 
@@ -143,10 +158,11 @@ export function calculatePayoff(
       balances[lumpSum.debtId] = Math.max(0, balances[lumpSum.debtId] - lumpSum.amount)
     }
 
-    // Accrue interest
+    // Accrue interest (use promo rate during promo period, regular rate after)
     for (const id of Object.keys(balances)) {
       if (balances[id] > 0) {
-        const interest = balances[id] * rates[id]
+        const rate = month <= promoEndMonths[id] ? promoRates[id] : regularRates[id]
+        const interest = balances[id] * rate
         balances[id] += interest
         totalInterest += interest
       }

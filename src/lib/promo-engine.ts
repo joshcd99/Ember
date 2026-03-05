@@ -32,15 +32,16 @@ function paymentPeriodsLeft(debt: Debt, asOf: Date = new Date()): number {
 /**
  * For deferred_interest type: total interest that has accumulated silently
  * since debt creation. Uses day-level precision.
- * Formula: promo_balance * (regular_apr / 365) * daysElapsed
+ * Formula: promo_balance * (interest_rate / 365) * daysElapsed
+ * Uses interest_rate (the card's real APR) for deferred interest accumulation.
  */
 export function calculateDeferredInterest(debt: Debt, asOf: Date = new Date()): number {
   if (debt.promo_type !== "deferred_interest") return 0
-  if (!debt.promo_balance || !debt.regular_apr || !debt.created_at) return 0
+  if (!debt.promo_balance || !debt.interest_rate || !debt.created_at) return 0
 
   const created = new Date(debt.created_at)
   const daysElapsed = Math.max(0, differenceInDays(asOf, created))
-  return debt.promo_balance * (debt.regular_apr / 365) * daysElapsed
+  return debt.promo_balance * (debt.interest_rate / 365) * daysElapsed
 }
 
 /**
@@ -119,13 +120,13 @@ export function extraNeededToMakeDeadline(debt: Debt): number {
  */
 export function interestAtRisk(debt: Debt): number {
   if (debt.promo_type !== "deferred_interest") return 0
-  if (!debt.promo_balance || !debt.regular_apr || !debt.promo_end_date) return 0
+  if (!debt.promo_balance || !debt.interest_rate || !debt.promo_end_date) return 0
 
   const created = new Date(debt.created_at)
   const end = new Date(debt.promo_end_date + "T00:00")
   const totalDays = Math.max(0, differenceInDays(end, created))
 
-  return debt.promo_balance * (debt.regular_apr / 365) * totalDays
+  return debt.promo_balance * (debt.interest_rate / 365) * totalDays
 }
 
 /**
