@@ -672,10 +672,10 @@ export function Debts() {
             )}
           </div>
           {tableOpen && (
-            <div className="mt-2 overflow-x-auto max-w-full rounded-lg border border-border">
+            <div className="mt-2 overflow-auto max-w-full max-h-96 rounded-lg border border-border">
               <table className="min-w-full text-xs">
                 <thead>
-                  <tr className="border-b border-border bg-muted/50">
+                  <tr className="border-b border-border bg-muted/50 sticky top-0 z-10">
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground sticky left-0 bg-muted/50">Month</th>
                     {debts.map(d => (
                       <th key={d.id} className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{d.name}</th>
