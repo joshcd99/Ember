@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { version } from "../../package.json"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -417,6 +418,9 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Version */}
+      <p className="text-xs text-muted-foreground text-center">Ember v{version}</p>
 
       {/* Remove member confirmation dialog */}
       <Dialog open={!!confirmRemoveMemberId} onOpenChange={(open) => !open && setConfirmRemoveMemberId(null)}>
