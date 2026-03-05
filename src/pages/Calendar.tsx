@@ -6,7 +6,7 @@ import { getOccurrencesInRange } from "@/lib/recurrence"
 import { getIncomeOccurrencesInRange } from "@/lib/income-recurrence"
 import { formatCurrency } from "@/lib/utils"
 import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X } from "lucide-react"
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday, eachDayOfInterval } from "date-fns"
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday, eachDayOfInterval, startOfDay } from "date-fns"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
@@ -75,16 +75,70 @@ export function Calendar() {
     return map
   }, [bills, billCategories, incomeSources, debts, calendarStart, calendarEnd, monthStart])
 
-  // Build running balance map across the visible calendar range
+  // Build a full events map from today to the calendar end (for running balance)
+  const fullEventsMap = useMemo(() => {
+    const today = startOfDay(new Date())
+    // If calendar starts after today, we need events in the gap
+    if (calendarStart <= today) return eventsMap
+
+    const map = new Map(eventsMap)
+    const gapStart = today
+    const gapEnd = calendarStart
+
+    for (const bill of bills) {
+      const occurrences = getOccurrencesInRange(bill, gapStart, gapEnd)
+      const catColor = billCategories.find(c => c.name === bill.category)?.color
+      for (const date of occurrences) {
+        const key = format(date, "yyyy-MM-dd")
+        const existing = map.get(key) ?? []
+        existing.push({ type: "bill", name: bill.name, amount: bill.amount, color: catColor })
+        map.set(key, existing)
+      }
+    }
+    for (const source of incomeSources) {
+      const occurrences = getIncomeOccurrencesInRange(source, gapStart, gapEnd)
+      for (const date of occurrences) {
+        const key = format(date, "yyyy-MM-dd")
+        const existing = map.get(key) ?? []
+        existing.push({ type: "income", name: source.name, amount: source.amount })
+        map.set(key, existing)
+      }
+    }
+    for (const debt of debts) {
+      const dueDay = debt.due_day
+      // Cover months in the gap
+      let m = gapStart.getMonth() + gapStart.getFullYear() * 12
+      const mEnd = gapEnd.getMonth() + gapEnd.getFullYear() * 12
+      while (m <= mEnd) {
+        const year = Math.floor(m / 12)
+        const month = m % 12
+        const maxDay = new Date(year, month + 1, 0).getDate()
+        const day = Math.min(dueDay, maxDay)
+        const date = new Date(year, month, day)
+        if (date >= gapStart && date < gapEnd) {
+          const key = format(date, "yyyy-MM-dd")
+          const existing = map.get(key) ?? []
+          existing.push({ type: "debt", name: debt.name, amount: debt.minimum_payment })
+          map.set(key, existing)
+        }
+        m++
+      }
+    }
+    return map
+  }, [eventsMap, calendarStart, bills, billCategories, incomeSources, debts])
+
+  // Build running balance map from today through the visible calendar
   const balanceMap = useMemo(() => {
     const map = new Map<string, number>()
     const startBalance = savingsAccount?.current_balance ?? 0
-    const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd })
+    const today = startOfDay(new Date())
+    const rangeStart = calendarStart <= today ? calendarStart : today
+    const days = eachDayOfInterval({ start: rangeStart, end: calendarEnd })
     let running = startBalance
 
     for (const d of days) {
       const key = format(d, "yyyy-MM-dd")
-      const events = eventsMap.get(key) ?? []
+      const events = fullEventsMap.get(key) ?? []
       for (const event of events) {
         if (event.type === "income") {
           running += event.amount
@@ -96,7 +150,7 @@ export function Calendar() {
     }
 
     return map
-  }, [eventsMap, calendarStart, calendarEnd, savingsAccount])
+  }, [fullEventsMap, calendarStart, calendarEnd, savingsAccount])
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading...</div>
