@@ -231,7 +231,7 @@ export function Calendar() {
                     key={key}
                     onClick={() => setSelectedDay(events.length > 0 ? day : null)}
                     className={cn(
-                      "relative min-h-[90px] p-1.5 border-b border-r border-border text-left transition-colors",
+                      "relative min-h-[130px] p-1.5 border-b border-r border-border text-left transition-colors",
                       !inMonth && "opacity-40",
                       bgTint,
                       isSelected && "ring-2 ring-primary ring-inset",
@@ -245,9 +245,9 @@ export function Calendar() {
                     )}>
                       {format(day, "d")}
                     </span>
-                    {/* Events with amounts */}
-                    <div className="mt-0.5 space-y-0.5">
-                      {events.slice(0, 3).map((event, ei) => (
+                    {/* Scrollable events container */}
+                    <div className="mt-0.5 space-y-0.5 overflow-y-auto max-h-[calc(100%-32px)]">
+                      {events.map((event, ei) => (
                         <div key={ei} className="flex items-center gap-1 truncate">
                           <span className={cn(
                             "h-1.5 w-1.5 rounded-full flex-shrink-0",
@@ -262,11 +262,8 @@ export function Calendar() {
                           </span>
                         </div>
                       ))}
-                      {events.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground">+{events.length - 3} more</span>
-                      )}
                     </div>
-                    {/* Day-end balance */}
+                    {/* Day-end balance — fixed at bottom */}
                     {events.length > 0 && dayBalance !== undefined && (
                       <div className={cn(
                         "absolute bottom-1 right-1.5 text-[9px] font-medium",
