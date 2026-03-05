@@ -71,7 +71,7 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
   }
 
   return (
-    <div ref={containerRef} className={cn(className)}>
+    <div ref={containerRef} className={cn("relative", className)}>
       {/* Trigger */}
       <button
         type="button"
@@ -86,9 +86,9 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
         {selected ? format(selected, "MMM d, yyyy") : placeholder}
       </button>
 
-      {/* Inline calendar — renders below trigger within normal flow */}
+      {/* Floating calendar — absolute so it overlays content below */}
       {open && (
-        <div className="mt-1 rounded-lg border border-border bg-card p-3 shadow-lg">
+        <div className="absolute z-50 mt-1 right-0 rounded-lg border border-border bg-card p-3 shadow-lg w-[280px]">
           {/* Month nav */}
           <div className="flex items-center justify-between mb-2">
             <button
