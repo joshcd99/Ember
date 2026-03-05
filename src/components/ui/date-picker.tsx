@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import {
   startOfMonth,
@@ -27,19 +28,39 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
   const [viewMonth, setViewMonth] = useState(() =>
     value ? new Date(value + "T00:00") : new Date()
   )
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Position the dropdown below the trigger
+  const updatePos = useCallback(() => {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    setPos({ top: rect.bottom + 4, left: rect.left })
+  }, [])
 
   // Close on click outside
   useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+    updatePos()
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (
+        triggerRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      ) return
+      setOpen(false)
     }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [open])
+    const handleScroll = () => updatePos()
+    document.addEventListener("mousedown", handleClick)
+    window.addEventListener("scroll", handleScroll, true)
+    window.addEventListener("resize", updatePos)
+    return () => {
+      document.removeEventListener("mousedown", handleClick)
+      window.removeEventListener("scroll", handleScroll, true)
+      window.removeEventListener("resize", updatePos)
+    }
+  }, [open, updatePos])
 
   // Sync view month when value changes externally
   useEffect(() => {
@@ -71,9 +92,10 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
   }
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <div className={cn("relative", className)}>
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
@@ -86,9 +108,13 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
         {selected ? format(selected, "MMM d, yyyy") : placeholder}
       </button>
 
-      {/* Dropdown calendar */}
-      {open && (
-        <div className="absolute z-50 mt-1 rounded-lg border border-border bg-card p-3 shadow-lg w-[280px]">
+      {/* Portal dropdown */}
+      {open && createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed z-[100] rounded-lg border border-border bg-card p-3 shadow-lg w-[280px]"
+          style={{ top: pos.top, left: pos.left }}
+        >
           {/* Month nav */}
           <div className="flex items-center justify-between mb-2">
             <button
@@ -145,7 +171,8 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
               })}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
