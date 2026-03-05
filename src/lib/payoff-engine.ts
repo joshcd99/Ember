@@ -21,7 +21,7 @@ export interface PayoffResult {
   categoryPayoffMonths: Record<string, number>
 }
 
-function sortDebts(debts: Debt[], strategy: Strategy, customOrder?: string[]): Debt[] {
+export function sortDebts(debts: Debt[], strategy: Strategy, customOrder?: string[]): Debt[] {
   const sorted = [...debts]
   switch (strategy) {
     case "avalanche":

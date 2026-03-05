@@ -35,7 +35,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
-import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
+import { calculatePayoff, sortDebts, type Strategy } from "@/lib/payoff-engine"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
 import { downloadCSV } from "@/lib/csv"
@@ -235,6 +235,10 @@ export function Debts() {
 
   // Build stacked area chart data from the selected strategy's timeline
   const selectedResult = results[selectedStrategy]
+  // Sort debts by strategy priority order for the breakdown table
+  const sortedDebts = useMemo(() => {
+    return sortDebts(debts, selectedStrategy, customOrder.length > 0 ? customOrder : undefined)
+  }, [debts, selectedStrategy, customOrder])
   const activeTypes = (Object.keys(DEBT_TYPE_META) as DebtType[]).filter(t =>
     debts.some(d => (d.debt_type ?? "other") === t)
   )
@@ -641,7 +645,7 @@ export function Debts() {
             </button>
             {tableOpen && (
               <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => {
-                const headers = ["Month", ...debts.flatMap(d => [`${d.name} Balance`, `${d.name} Payment`]), "Total"]
+                const headers = ["Month", ...sortedDebts.flatMap(d => [`${d.name} Balance`, `${d.name} Payment`]), "Total"]
                 const rows = selectedResult.timeline.map((snap) => {
                   const cal = offsetToCalMonth(snap.month)
                   const [y, m] = cal.split("-").map(Number)
@@ -649,7 +653,7 @@ export function Debts() {
                   const total = Object.values(snap.balances).reduce((s, b) => s + b, 0)
                   const prevSnap = snap.month > 0 ? selectedResult.timeline[snap.month - 1] : null
                   const cells: (string | number)[] = [label]
-                  for (const d of debts) {
+                  for (const d of sortedDebts) {
                     const bal = snap.balances[d.id] ?? 0
                     let payment = 0
                     if (prevSnap && snap.month > 0) {
@@ -677,7 +681,7 @@ export function Debts() {
                 <thead>
                   <tr className="border-b border-border bg-muted/50 sticky top-0 z-10">
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground sticky left-0 bg-muted/50">Month</th>
-                    {debts.map(d => (
+                    {sortedDebts.map(d => (
                       <th key={d.id} className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{d.name}</th>
                     ))}
                     <th className="text-right px-3 py-2 font-medium text-muted-foreground">Total</th>
@@ -694,7 +698,7 @@ export function Debts() {
                     return (
                       <tr key={snap.month} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-3 py-1.5 text-muted-foreground sticky left-0 bg-card">{label}</td>
-                        {debts.map(d => {
+                        {sortedDebts.map(d => {
                           const bal = snap.balances[d.id]
                           // Payment = previous balance after interest - current balance
                           let payment = 0
