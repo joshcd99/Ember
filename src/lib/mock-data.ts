@@ -1,5 +1,6 @@
 import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory } from "@/types/database"
-import { recurrenceToMonthlyMultiplier } from "@/lib/recurrence"
+import { recurrenceToMonthlyMultiplier, getOccurrencesInRange } from "@/lib/recurrence"
+import { startOfMonth, addMonths } from "date-fns"
 import { DEFAULT_BILL_CATEGORIES } from "@/lib/bill-categories"
 
 export const mockDebts: Debt[] = [
@@ -125,11 +126,21 @@ export function getTotalStartingDebt(debts: Debt[]): number {
 }
 
 export function getMonthlyIncome(sources: IncomeSource[]): number {
-  return sources.reduce((sum, s) => sum + s.amount * recurrenceToMonthlyMultiplier(s), 0)
+  const now = new Date()
+  const monthStart = startOfMonth(now)
+  const monthEnd = startOfMonth(addMonths(now, 1))
+  return sources
+    .filter(s => getOccurrencesInRange(s, monthStart, monthEnd).length > 0)
+    .reduce((sum, s) => sum + s.amount * recurrenceToMonthlyMultiplier(s), 0)
 }
 
 export function getMonthlyBills(bills: Bill[]): number {
-  return bills.reduce((sum, b) => sum + b.amount * recurrenceToMonthlyMultiplier(b), 0)
+  const now = new Date()
+  const monthStart = startOfMonth(now)
+  const monthEnd = startOfMonth(addMonths(now, 1))
+  return bills
+    .filter(b => getOccurrencesInRange(b, monthStart, monthEnd).length > 0)
+    .reduce((sum, b) => sum + b.amount * recurrenceToMonthlyMultiplier(b), 0)
 }
 
 export function getMonthlyMinimums(debts: Debt[]): number {
