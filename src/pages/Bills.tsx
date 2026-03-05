@@ -1,28 +1,49 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/EmptyState"
 import { BillModal } from "@/components/modals/BillModal"
-import { Receipt, Plus, Pencil, Download } from "lucide-react"
+import { Receipt, Plus, Pencil, Download, ChevronRight, CreditCard, Flame } from "lucide-react"
 import { useAppData } from "@/contexts/DataContext"
-import { getMonthlyBills } from "@/lib/mock-data"
+import { getMonthlyBills, getMonthlyIncome, getMonthlyMinimums } from "@/lib/mock-data"
 import { formatRecurrence } from "@/lib/recurrence"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatCurrencyExact, formatPercent, formatDate } from "@/lib/utils"
 import { downloadCSV } from "@/lib/csv"
-import type { Bill } from "@/types/database"
+import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
+import type { Bill, DebtType } from "@/types/database"
 
 export function Bills() {
-  const { bills, billCategories, loading } = useAppData()
+  const { bills, billCategories, debts, incomeSources, householdSettings, loading } = useAppData()
+  const navigate = useNavigate()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingBill, setEditingBill] = useState<Bill | null>(null)
+
+  const billsSectionRef = useRef<HTMLDivElement>(null)
+  const debtSectionRef = useRef<HTMLDivElement>(null)
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading...</div>
   }
 
   const monthlyBillsTotal = getMonthlyBills(bills)
+  const monthlyMinimums = getMonthlyMinimums(debts)
+  const monthlyIncome = getMonthlyIncome(incomeSources)
+
+  // Extra payment calculation
+  const savedExtraType = householdSettings?.extra_payment_type ?? "fixed"
+  const savedExtraAmount = householdSettings?.extra_payment_amount ?? 0
+  let extraPayment = 0
+  if (savedExtraType === "percent_of_free_cash") {
+    const freeCash = monthlyIncome - monthlyBillsTotal - monthlyMinimums
+    extraPayment = Math.max(0, Math.floor(freeCash * savedExtraAmount / 100))
+  } else {
+    extraPayment = savedExtraAmount
+  }
+
+  const totalMonthlyOut = monthlyBillsTotal + monthlyMinimums + extraPayment
 
   const getCategoryColor = (categoryName: string) => {
     return billCategories.find(c => c.name === categoryName)?.color
@@ -31,11 +52,24 @@ export function Bills() {
   const openAdd = () => { setEditingBill(null); setModalOpen(true) }
   const openEdit = (b: Bill) => { setEditingBill(b); setModalOpen(true) }
 
+  // Group debts by type for the debt minimums section
+  const debtsByType = new Map<DebtType, typeof debts>()
+  for (const d of debts) {
+    const type = d.debt_type ?? "other"
+    const group = debtsByType.get(type) ?? []
+    group.push(d)
+    debtsByType.set(type, group)
+  }
+  // Sort each group by minimum_payment descending
+  for (const group of debtsByType.values()) {
+    group.sort((a, b) => b.minimum_payment - a.minimum_payment)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-3xl">Bills</h1>
+          <h1 className="font-display text-3xl">Expenses</h1>
           <p className="text-muted-foreground mt-1">Track what goes out.</p>
         </div>
         {bills.length > 0 && (
@@ -55,25 +89,60 @@ export function Bills() {
         )}
       </div>
 
-      {bills.length > 0 && (
+      {/* Summary card */}
+      {(bills.length > 0 || debts.length > 0) && (
         <Card>
           <CardHeader>
-            <CardDescription>Monthly Bills</CardDescription>
-            <CardTitle className="text-2xl text-destructive">{formatCurrency(monthlyBillsTotal)}</CardTitle>
+            <CardDescription>Total Monthly Out</CardDescription>
+            <CardTitle className="text-3xl font-display">{formatCurrency(totalMonthlyOut)}</CardTitle>
           </CardHeader>
+          <CardContent className="space-y-2">
+            {bills.length > 0 && (
+              <button
+                className="flex items-center justify-between w-full text-left cursor-pointer hover:bg-muted/50 rounded-md px-2 py-1.5 -mx-2 transition-colors"
+                onClick={() => billsSectionRef.current?.scrollIntoView({ behavior: "smooth" })}
+              >
+                <span className="text-sm text-destructive">Bills</span>
+                <span className="text-sm font-medium text-destructive">{formatCurrency(monthlyBillsTotal)}</span>
+              </button>
+            )}
+            {debts.length > 0 && (
+              <button
+                className="flex items-center justify-between w-full text-left cursor-pointer hover:bg-muted/50 rounded-md px-2 py-1.5 -mx-2 transition-colors"
+                onClick={() => debtSectionRef.current?.scrollIntoView({ behavior: "smooth" })}
+              >
+                <span className="text-sm text-muted-foreground">Debt minimums</span>
+                <span className="text-sm font-medium text-muted-foreground">{formatCurrency(monthlyMinimums)}</span>
+              </button>
+            )}
+            {extraPayment > 0 && (
+              <div className="flex items-center justify-between px-2 py-1.5 -mx-2">
+                <span className="text-sm text-warning flex items-center gap-1.5">
+                  <Flame className="h-3.5 w-3.5" /> Extra payments
+                </span>
+                <span className="text-sm font-medium text-warning">{formatCurrency(extraPayment)}</span>
+              </div>
+            )}
+          </CardContent>
         </Card>
       )}
 
+      {/* Bills section */}
       {bills.length === 0 ? (
         <EmptyState
           icon={<Receipt className="h-8 w-8 text-muted-foreground" />}
-          title="No bills yet"
+          title="No expenses yet"
           description="Add rent, utilities, subscriptions — anything you pay regularly. This helps us figure out what's left for debt payoff."
           actionLabel="Add Bill"
           onAction={openAdd}
         />
       ) : (
-        <div className="space-y-3">
+        <div ref={billsSectionRef} className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Bills</span>
+            <div className="flex-1 border-t border-border" />
+          </div>
           {bills.map(bill => {
             const catColor = getCategoryColor(bill.category)
             return (
@@ -110,6 +179,59 @@ export function Bills() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {/* Debt Minimums section */}
+      {debts.length > 0 && (
+        <div ref={debtSectionRef} className="space-y-3">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Debt Minimums</span>
+            <div className="flex-1 border-t border-border" />
+          </div>
+          {Array.from(debtsByType.entries()).map(([type, group]) => {
+            const typeColor = DEBT_TYPE_CHART_COLORS[type]
+            const typeLabel = DEBT_TYPE_META[type].label
+            return (
+              <div key={type} className="space-y-2">
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: typeColor }} />
+                  <span className="text-[10px] font-medium text-muted-foreground">{typeLabel}</span>
+                  <div className="flex-1 border-t border-border" />
+                </div>
+                {group.map(debt => (
+                  <Card
+                    key={debt.id}
+                    className="cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => navigate("/debts")}
+                  >
+                    <CardContent className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: typeColor }} />
+                        </div>
+                        <div>
+                          <p className="font-medium">{debt.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {DEBT_TYPE_META[type].label} &middot; {formatPercent(debt.interest_rate)} APR
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-semibold">{formatCurrencyExact(debt.minimum_payment)}/mo</p>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )
+          })}
+          <div className="flex items-center justify-between px-1 pt-2">
+            <span className="text-sm text-muted-foreground">Total minimums</span>
+            <span className="text-sm font-medium">{formatCurrencyExact(monthlyMinimums)}/mo</span>
+          </div>
         </div>
       )}
 

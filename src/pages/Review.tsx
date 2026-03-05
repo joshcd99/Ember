@@ -188,7 +188,7 @@ export function Review() {
           {/* Bills paid */}
           <Card>
             <CardContent className="py-6 text-center space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-widest">Bills handled</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-widest">Expenses handled</p>
               <p className="font-display text-3xl">{formatCurrency(stats.billsPaidTotal)}</p>
               <p className="text-xs text-muted-foreground">~{stats.billsPaidCount} payments</p>
             </CardContent>

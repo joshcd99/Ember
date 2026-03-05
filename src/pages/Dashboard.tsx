@@ -112,12 +112,12 @@ export function Dashboard() {
           <Card className="border-dashed border-2">
             <CardContent className="py-8 text-center space-y-3">
               <Receipt className="h-8 w-8 text-muted-foreground mx-auto" />
-              <h3 className="font-semibold">Add your bills</h3>
+              <h3 className="font-semibold">Add your expenses</h3>
               <p className="text-sm text-muted-foreground">
                 Rent, utilities, subscriptions. We'll make sure these don't smother the flame.
               </p>
               <Link to="/bills">
-                <Button size="sm" variant="outline">Add bills</Button>
+                <Button size="sm" variant="outline">Add expenses</Button>
               </Link>
             </CardContent>
           </Card>
@@ -216,7 +216,7 @@ export function Dashboard() {
                   <span>{formatCurrency(monthlyIncome)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Bills</span>
+                  <span>Expenses</span>
                   <span>-{formatCurrency(monthlyBillsTotal)}</span>
                 </div>
                 <div className="flex justify-between">
@@ -334,13 +334,13 @@ export function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CalendarClock className="h-5 w-5 text-muted-foreground" />
-              Upcoming Bills (7 days)
+              Upcoming Expenses (7 days)
             </CardTitle>
           </CardHeader>
           <CardContent>
             {bills.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                <Link to="/bills" className="text-primary hover:underline">Add your bills</Link> to see what's coming up.
+                <Link to="/bills" className="text-primary hover:underline">Add your expenses</Link> to see what's coming up.
               </p>
             ) : upcomingBillOccurrences.length === 0 ? (
               <p className="text-sm text-muted-foreground">All clear for the next 7 days.</p>

@@ -26,7 +26,7 @@ const navItems = [
   { to: "/debts", icon: CreditCard, label: "Debts" },
   { to: "/calendar", icon: CalendarDays, label: "Calendar" },
   { to: "/income", icon: Wallet, label: "Income" },
-  { to: "/bills", icon: Receipt, label: "Bills" },
+  { to: "/bills", icon: Receipt, label: "Expenses" },
   { to: "/scenarios", icon: SlidersHorizontal, label: "Scenarios" },
   { to: "/review", icon: Sparkles, label: "Year in Review" },
   { to: "/settings", icon: Settings, label: "Settings" },
