@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/EmptyState"
 import { DebtModal } from "@/components/modals/DebtModal"
 import { Input } from "@/components/ui/input"
-import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame } from "lucide-react"
+import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame, Download } from "lucide-react"
 import {
   LineChart,
   Line,
@@ -38,6 +38,7 @@ import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/moc
 import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
+import { downloadCSV } from "@/lib/csv"
 import type { Debt, DebtType, ExtraPaymentType } from "@/types/database"
 
 /** 3-tier APR badge: >15% red, 7-15% neutral, <7% green */
@@ -288,9 +289,19 @@ export function Debts() {
             Compare strategies and pick the one that burns fastest.
           </p>
         </div>
-        <Button onClick={openAdd}>
-          <Plus className="h-4 w-4" /> Add Debt
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => {
+            downloadCSV("debts.csv",
+              ["Name", "Type", "Current Balance", "Starting Balance", "APR", "Minimum Payment", "Due Day"],
+              debts.map(d => [d.name, d.debt_type ?? "other", d.current_balance, d.starting_balance, +(d.interest_rate * 100).toFixed(2), d.minimum_payment, d.due_day])
+            )
+          }}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
+          <Button onClick={openAdd}>
+            <Plus className="h-4 w-4" /> Add Debt
+          </Button>
+        </div>
       </div>
 
       {/* Debt cards */}
@@ -619,14 +630,47 @@ export function Debts() {
           </div>
 
           {/* Collapsible monthly balance table */}
-          <button
-            type="button"
-            onClick={() => setTableOpen(o => !o)}
-            className="flex items-center gap-2 mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ChevronDown className={cn("h-4 w-4 transition-transform", !tableOpen && "-rotate-90")} />
-            Monthly breakdown
-          </button>
+          <div className="flex items-center gap-2 mt-4">
+            <button
+              type="button"
+              onClick={() => setTableOpen(o => !o)}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronDown className={cn("h-4 w-4 transition-transform", !tableOpen && "-rotate-90")} />
+              Monthly breakdown
+            </button>
+            {tableOpen && (
+              <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => {
+                const headers = ["Month", ...debts.flatMap(d => [`${d.name} Balance`, `${d.name} Payment`]), "Total"]
+                const rows = selectedResult.timeline.map((snap) => {
+                  const cal = offsetToCalMonth(snap.month)
+                  const [y, m] = cal.split("-").map(Number)
+                  const label = `${MONTH_NAMES[m - 1]} '${String(y).slice(2)}`
+                  const total = Object.values(snap.balances).reduce((s, b) => s + b, 0)
+                  const prevSnap = snap.month > 0 ? selectedResult.timeline[snap.month - 1] : null
+                  const cells: (string | number)[] = [label]
+                  for (const d of debts) {
+                    const bal = snap.balances[d.id] ?? 0
+                    let payment = 0
+                    if (prevSnap && snap.month > 0) {
+                      const prevBal = prevSnap.balances[d.id] ?? 0
+                      const afterInterest = prevBal * (1 + d.interest_rate / 12)
+                      payment = Math.max(0, +(afterInterest - bal).toFixed(2))
+                    }
+                    cells.push(+bal.toFixed(2), payment)
+                  }
+                  cells.push(+total.toFixed(2))
+                  return cells
+                }).filter(row => {
+                  const total = row[row.length - 1]
+                  return typeof total !== "number" || total >= 0.01 || row[0] === `${MONTH_NAMES[new Date().getMonth()]} '${String(new Date().getFullYear()).slice(2)}`
+                })
+                downloadCSV("monthly-breakdown.csv", headers, rows)
+              }}>
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
           {tableOpen && (
             <div className="mt-2 overflow-x-auto rounded-lg border border-border">
               <table className="w-full text-xs">

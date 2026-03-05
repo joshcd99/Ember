@@ -4,11 +4,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/EmptyState"
 import { IncomeSourceModal } from "@/components/modals/IncomeSourceModal"
-import { Plus, DollarSign, Pencil } from "lucide-react"
+import { Plus, DollarSign, Pencil, Download } from "lucide-react"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome } from "@/lib/mock-data"
 import { formatRecurrence } from "@/lib/recurrence"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { downloadCSV } from "@/lib/csv"
 import type { IncomeSource } from "@/types/database"
 
 export function Income() {
@@ -36,9 +37,19 @@ export function Income() {
           <p className="text-muted-foreground mt-1">Track your fuel.</p>
         </div>
         {incomeSources.length > 0 && (
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4" /> Add Source
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => {
+              downloadCSV("income-sources.csv",
+                ["Name", "Amount", "Frequency", "Next Expected Date", "Variable"],
+                incomeSources.map(s => [s.name, s.amount, s.frequency, s.next_expected_date, s.is_variable ? "Yes" : "No"])
+              )
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
+            <Button onClick={openAdd}>
+              <Plus className="h-4 w-4" /> Add Source
+            </Button>
+          </div>
         )}
       </div>
 

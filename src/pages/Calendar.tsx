@@ -6,7 +6,8 @@ import { getOccurrencesInRange } from "@/lib/recurrence"
 import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { formatCurrency } from "@/lib/utils"
-import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X, Plus } from "lucide-react"
+import { downloadCSV } from "@/lib/csv"
+import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X, Plus, Download } from "lucide-react"
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday, eachDayOfInterval, startOfDay } from "date-fns"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
@@ -231,7 +232,27 @@ export function Calendar() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={goToday}>Today</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => {
+            const days = eachDayOfInterval({ start: monthStart, end: monthEnd })
+            const rows: (string | number)[][] = []
+            for (const d of days) {
+              const key = format(d, "yyyy-MM-dd")
+              const events = eventsMap.get(key) ?? []
+              const bal = balanceMap.get(key)
+              for (const event of events) {
+                rows.push([key, event.type, event.name, event.amount, bal ?? ""])
+              }
+            }
+            downloadCSV(`calendar-${format(currentMonth, "yyyy-MM")}.csv`,
+              ["Date", "Type", "Name", "Amount", "Running Balance"],
+              rows
+            )
+          }}>
+            <Download className="h-4 w-4" /> Export Month
+          </Button>
+          <Button variant="outline" size="sm" onClick={goToday}>Today</Button>
+        </div>
       </div>
 
       {/* Calendar grid */}

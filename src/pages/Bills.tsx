@@ -4,11 +4,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/EmptyState"
 import { BillModal } from "@/components/modals/BillModal"
-import { Receipt, Plus, Pencil } from "lucide-react"
+import { Receipt, Plus, Pencil, Download } from "lucide-react"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyBills } from "@/lib/mock-data"
 import { formatRecurrence } from "@/lib/recurrence"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { downloadCSV } from "@/lib/csv"
 import type { Bill } from "@/types/database"
 
 export function Bills() {
@@ -38,9 +39,19 @@ export function Bills() {
           <p className="text-muted-foreground mt-1">Track what goes out.</p>
         </div>
         {bills.length > 0 && (
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4" /> Add Bill
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => {
+              downloadCSV("bills.csv",
+                ["Name", "Amount", "Frequency", "Category", "Next Due Date"],
+                bills.map(b => [b.name, b.amount, b.frequency, b.category, b.next_due_date])
+              )
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
+            <Button onClick={openAdd}>
+              <Plus className="h-4 w-4" /> Add Bill
+            </Button>
+          </div>
         )}
       </div>
 
