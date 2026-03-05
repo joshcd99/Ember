@@ -5,11 +5,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/EmptyState"
 import { BillModal } from "@/components/modals/BillModal"
-import { Receipt, Plus, Pencil, Download, ChevronRight, CreditCard, Flame } from "lucide-react"
+import { Receipt, Plus, Pencil, Download, ChevronRight, CreditCard, Flame, Filter, ArrowUpDown } from "lucide-react"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyBills, getMonthlyIncome, getMonthlyMinimums } from "@/lib/mock-data"
 import { formatRecurrence } from "@/lib/recurrence"
-import { formatCurrency, formatCurrencyExact, formatPercent, formatDate } from "@/lib/utils"
+import { cn, formatCurrency, formatCurrencyExact, formatPercent, formatDate } from "@/lib/utils"
 import { downloadCSV } from "@/lib/csv"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import type { Bill, DebtType } from "@/types/database"
@@ -20,6 +20,8 @@ export function Bills() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingBill, setEditingBill] = useState<Bill | null>(null)
+  const [billFilter, setBillFilter] = useState<string>("all")
+  const [billSort, setBillSort] = useState<"category" | "name" | "amount" | "due">("category")
 
   const billsSectionRef = useRef<HTMLDivElement>(null)
   const debtSectionRef = useRef<HTMLDivElement>(null)
@@ -63,6 +65,43 @@ export function Bills() {
   // Sort each group by minimum_payment descending
   for (const group of debtsByType.values()) {
     group.sort((a, b) => b.minimum_payment - a.minimum_payment)
+  }
+
+  const renderBillCard = (bill: Bill, getCatColor: (name: string) => string | undefined, onEdit: (b: Bill) => void) => {
+    const catColor = getCatColor(bill.category)
+    return (
+      <Card
+        key={bill.id}
+        className="cursor-pointer hover:border-primary/50 transition-colors"
+        onClick={() => onEdit(bill)}
+      >
+        <CardContent className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+              <Receipt className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="font-medium">{bill.name}</p>
+              <p className="text-sm text-muted-foreground">
+                {formatRecurrence(bill)} &middot; Due {formatDate(bill.next_due_date)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="font-semibold">{formatCurrency(bill.amount)}</p>
+              <Badge variant="secondary" className="inline-flex items-center gap-1">
+                {catColor && (
+                  <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor }} />
+                )}
+                {catColor ? bill.category : "Uncategorized"}
+              </Badge>
+            </div>
+            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -143,42 +182,119 @@ export function Bills() {
             <span className="text-xs font-medium text-muted-foreground">Bills</span>
             <div className="flex-1 border-t border-border" />
           </div>
-          {bills.map(bill => {
-            const catColor = getCategoryColor(bill.category)
-            return (
-              <Card
-                key={bill.id}
-                className="cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => openEdit(bill)}
+
+          {/* Filter controls */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Filter:</span>
+            <button
+              type="button"
+              onClick={() => setBillFilter("all")}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-xs border transition-colors",
+                billFilter === "all"
+                  ? "border-primary bg-primary/15 text-foreground"
+                  : "border-border bg-card text-muted-foreground hover:border-primary/50"
+              )}
+            >
+              All
+            </button>
+            {billCategories
+              .filter(cat => bills.some(b => b.category === cat.name))
+              .map(cat => (
+                <button
+                  key={cat.name}
+                  type="button"
+                  onClick={() => setBillFilter(cat.name)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-xs border transition-colors inline-flex items-center gap-1",
+                    billFilter === cat.name
+                      ? "border-primary bg-primary/15 text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                  )}
+                >
+                  <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                  {cat.name}
+                </button>
+              ))}
+          </div>
+
+          {/* Sort controls */}
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Sort:</span>
+            {([
+              { value: "category", label: "Category" },
+              { value: "name", label: "Name" },
+              { value: "amount", label: "Amount" },
+              { value: "due", label: "Due Date" },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setBillSort(opt.value)}
+                className={cn(
+                  "px-2.5 py-1 rounded-full text-xs border transition-colors",
+                  billSort === opt.value
+                    ? "border-primary bg-primary/15 text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                )}
               >
-                <CardContent className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                      <Receipt className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{bill.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatRecurrence(bill)} &middot; Due {formatDate(bill.next_due_date)}
-                      </p>
-                    </div>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Bill cards */}
+          {(() => {
+            const filteredBills = billFilter === "all"
+              ? bills
+              : bills.filter(b => b.category === billFilter)
+
+            if (billSort === "category") {
+              const grouped = billCategories
+                .filter(cat => filteredBills.some(b => b.category === cat.name))
+                .map(cat => ({
+                  name: cat.name,
+                  color: cat.color,
+                  bills: filteredBills
+                    .filter(b => b.category === cat.name)
+                    .sort((a, b) => b.amount - a.amount),
+                }))
+
+              // Bills with no matching category
+              const uncategorized = filteredBills.filter(
+                b => !billCategories.some(c => c.name === b.category)
+              )
+              if (uncategorized.length > 0) {
+                grouped.push({ name: "Uncategorized", color: "", bills: uncategorized.sort((a, b) => b.amount - a.amount) })
+              }
+
+              return grouped.map((group, gi) => (
+                <div key={group.name} className="space-y-2">
+                  <div className={cn("flex items-center gap-2", gi > 0 && "pt-1")}>
+                    {group.color && (
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: group.color }} />
+                    )}
+                    <span className="text-[10px] font-medium text-muted-foreground">{group.name}</span>
+                    <div className="flex-1 border-t border-border" />
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <p className="font-semibold">{formatCurrency(bill.amount)}</p>
-                      <Badge variant="secondary" className="inline-flex items-center gap-1">
-                        {catColor && (
-                          <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: catColor }} />
-                        )}
-                        {catColor ? bill.category : "Uncategorized"}
-                      </Badge>
-                    </div>
-                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
+                  {group.bills.map(bill => renderBillCard(bill, getCategoryColor, openEdit))}
+                </div>
+              ))
+            }
+
+            const sorted = [...filteredBills].sort((a, b) => {
+              switch (billSort) {
+                case "name": return a.name.localeCompare(b.name)
+                case "amount": return b.amount - a.amount
+                case "due": return a.next_due_date.localeCompare(b.next_due_date)
+                default: return 0
+              }
+            })
+
+            return sorted.map(bill => renderBillCard(bill, getCategoryColor, openEdit))
+          })()}
         </div>
       )}
 
