@@ -15,8 +15,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  ReferenceDot,
-  Label,
 } from "recharts"
 import {
   DndContext,
@@ -569,51 +567,34 @@ export function Debts() {
                     type="linear"
                     dataKey={t}
                     stackId="debt"
-                    stroke={DEBT_TYPE_CHART_COLORS[t]}
+                    stroke="none"
                     fill={DEBT_TYPE_CHART_COLORS[t]}
-                    fillOpacity={0.6}
-                    strokeWidth={1.5}
+                    fillOpacity={1}
                     dot={false}
                   />
                 ))}
-                {/* Milestone markers where each type hits zero */}
-                {activeTypes.map(t => {
-                  const m = selectedResult.categoryPayoffMonths[t]
-                  if (m == null || m === 0) return null
-                  const meta = DEBT_TYPE_META[t]
-                  const calMonth = offsetToCalMonth(m)
-                  const [y, mo] = calMonth.split("-").map(Number)
-                  const monthLabel = `${MONTH_NAMES[mo - 1]} '${String(y).slice(2)}`
-                  return (
-                    <ReferenceDot
-                      key={`milestone-${t}`}
-                      x={calMonth}
-                      y={0}
-                      r={5}
-                      fill={DEBT_TYPE_CHART_COLORS[t]}
-                      stroke="var(--card)"
-                      strokeWidth={2}
-                    >
-                      <Label
-                        value={`${meta.emoji} ${meta.label.split(" ")[0]} done · ${monthLabel}`}
-                        position="top"
-                        offset={10}
-                        style={{ fontSize: 10, fill: DEBT_TYPE_CHART_COLORS[t], fontWeight: 600 }}
-                      />
-                    </ReferenceDot>
-                  )
-                })}
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          {/* Custom legend */}
-          <div className="flex flex-wrap gap-4 mt-3 justify-center">
-            {activeTypes.map(t => (
-              <div key={t} className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[t] }} />
-                <span className="text-xs text-muted-foreground">{DEBT_TYPE_META[t].label}</span>
-              </div>
-            ))}
+          {/* Legend + milestones */}
+          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 justify-center">
+            {activeTypes.map(t => {
+              const m = selectedResult.categoryPayoffMonths[t]
+              let payoffLabel = ""
+              if (m != null && m > 0) {
+                const cal = offsetToCalMonth(m)
+                const [y, mo] = cal.split("-").map(Number)
+                payoffLabel = ` — paid off ${MONTH_NAMES[mo - 1]} '${String(y).slice(2)}`
+              }
+              return (
+                <div key={t} className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[t] }} />
+                  <span className="text-xs text-muted-foreground">
+                    {DEBT_TYPE_META[t].label}{payoffLabel}
+                  </span>
+                </div>
+              )
+            })}
           </div>
 
           {/* Collapsible monthly balance table */}
