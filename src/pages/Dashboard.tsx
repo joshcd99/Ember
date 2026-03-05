@@ -179,7 +179,7 @@ export function Dashboard() {
           const risk = interestAtRisk(d)
           const extraNeeded = extraNeededToMakeDeadline(d)
           const endLabel = d.promo_end_date
-            ? new Date(d.promo_end_date).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+            ? new Date(d.promo_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
             : ""
           return (
             <Card className="border-warning/30 bg-warning/5">

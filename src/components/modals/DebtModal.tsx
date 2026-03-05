@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import {
   LineChart,
   Line,
@@ -305,10 +306,10 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
                   />
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Promo End Date</label>
-                    <Input
-                      type="month"
-                      value={promoEndDate ? promoEndDate.slice(0, 7) : ""}
-                      onChange={(e) => setPromoEndDate(e.target.value ? e.target.value + "-01" : "")}
+                    <DatePicker
+                      value={promoEndDate}
+                      onChange={setPromoEndDate}
+                      placeholder="Select end date"
                     />
                   </div>
                 </div>

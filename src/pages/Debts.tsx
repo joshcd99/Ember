@@ -46,6 +46,7 @@ import {
   extraNeededToMakeDeadline,
   interestAtRisk,
   monthsUntilPromoEnd,
+  daysUntilPromoEnd,
   projectedBalanceAtPromoEnd,
   deadlineBuffer,
   calculateDeferredInterest,
@@ -345,6 +346,8 @@ export function Debts() {
 
     // Promo-specific calculations
     const promoMonthsLeft = isPromo ? monthsUntilPromoEnd(debt) : 0
+    const promoDaysLeft = isPromo ? daysUntilPromoEnd(debt) : 0
+    const promoTimeLabel = promoDaysLeft < 60 ? `${promoDaysLeft} days` : `${promoMonthsLeft} months`
     const promoOnTrack = isPromo ? willMakeDeadline(debt) : true
     const promoExtraNeeded = isPromo ? extraNeededToMakeDeadline(debt) : 0
     const promoRisk = isPromo ? interestAtRisk(debt) : 0
@@ -362,7 +365,7 @@ export function Debts() {
     const promoProgressColor = promoBuffer > 2 ? "bg-success" : promoBuffer >= 0 ? "bg-warning" : "bg-destructive"
 
     const promoEndLabel = debt.promo_end_date
-      ? new Date(debt.promo_end_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+      ? new Date(debt.promo_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       : ""
 
     return (
@@ -428,7 +431,7 @@ export function Debts() {
               <div className="flex items-center gap-2 text-sm">
                 <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
                 <span className="font-medium">0% promo ends {promoEndLabel}</span>
-                <span className="text-muted-foreground">&middot; {promoMonthsLeft} months</span>
+                <span className="text-muted-foreground">&middot; {promoTimeLabel}</span>
               </div>
               {deferredAmt > 0 && (
                 <p className="text-xs text-muted-foreground">
@@ -471,7 +474,7 @@ export function Debts() {
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="h-4 w-4 text-primary flex-shrink-0" />
                 <span className="font-medium">0% promo ends {promoEndLabel}</span>
-                <span className="text-muted-foreground">&middot; {promoMonthsLeft} months</span>
+                <span className="text-muted-foreground">&middot; {promoTimeLabel}</span>
               </div>
               <p className="text-xs text-muted-foreground">
                 Remaining promo balance: <span className="font-medium">{formatCurrency(debt.promo_balance ?? 0)}</span>
