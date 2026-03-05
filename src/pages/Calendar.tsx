@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAppData } from "@/contexts/DataContext"
 import { getOccurrencesInRange } from "@/lib/recurrence"
+import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
+import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { formatCurrency } from "@/lib/utils"
 import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X, Plus } from "lucide-react"
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday, eachDayOfInterval, startOfDay } from "date-fns"
@@ -40,6 +42,26 @@ export function Calendar() {
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 })
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 })
 
+  // Compute per-debt payoff dates from saved strategy
+  const debtPayoffDates = useMemo(() => {
+    if (debts.length === 0) return new Map<string, Date>()
+    const savedStrategy = (householdSettings?.preferred_strategy ?? "minimums") as Strategy
+    const savedExtraType = householdSettings?.extra_payment_type ?? "fixed"
+    const savedExtraAmount = householdSettings?.extra_payment_amount ?? 0
+    const cashFlow = Math.max(0, getMonthlyIncome(incomeSources) - getMonthlyBills(bills) - getMonthlyMinimums(debts))
+    const extra = savedExtraType === "percent_of_free_cash"
+      ? Math.max(0, Math.floor(cashFlow * (savedExtraAmount / 100)))
+      : savedExtraAmount
+    const result = calculatePayoff(debts, savedStrategy, extra, null, householdSettings?.custom_debt_order)
+    const map = new Map<string, Date>()
+    for (const entry of result.debtPayoffOrder) {
+      const d = new Date()
+      d.setMonth(d.getMonth() + entry.month)
+      map.set(entry.id, d)
+    }
+    return map
+  }, [debts, incomeSources, bills, householdSettings])
+
   // Build events map: date string -> events[]
   const eventsMap = useMemo(() => {
     const map = new Map<string, DayEvent[]>()
@@ -70,9 +92,10 @@ export function Calendar() {
       }
     }
 
-    // Debt payments (monthly on due_day)
+    // Debt payments (monthly on due_day, stop after projected payoff)
     for (const debt of debts) {
       const dueDay = debt.due_day
+      const payoffDate = debtPayoffDates.get(debt.id)
       for (let m = monthStart.getMonth() - 1; m <= monthStart.getMonth() + 1; m++) {
         const year = monthStart.getFullYear() + Math.floor(m / 12)
         const month = ((m % 12) + 12) % 12
@@ -80,13 +103,14 @@ export function Calendar() {
         const day = Math.min(dueDay, maxDay)
         const date = new Date(year, month, day)
         if (date >= rangeStart && date < rangeEnd) {
+          if (payoffDate && date > payoffDate) continue
           addEvent(date, { type: "debt", name: debt.name, amount: debt.minimum_payment })
         }
       }
     }
 
     return map
-  }, [bills, billCategories, incomeSources, debts, calendarStart, calendarEnd, monthStart])
+  }, [bills, billCategories, incomeSources, debts, calendarStart, calendarEnd, monthStart, debtPayoffDates])
 
   // Build a full events map from today to the calendar end (for running balance)
   const fullEventsMap = useMemo(() => {
@@ -119,6 +143,7 @@ export function Calendar() {
     }
     for (const debt of debts) {
       const dueDay = debt.due_day
+      const payoffDate = debtPayoffDates.get(debt.id)
       // Cover months in the gap
       let m = gapStart.getMonth() + gapStart.getFullYear() * 12
       const mEnd = gapEnd.getMonth() + gapEnd.getFullYear() * 12
@@ -129,6 +154,7 @@ export function Calendar() {
         const day = Math.min(dueDay, maxDay)
         const date = new Date(year, month, day)
         if (date >= gapStart && date < gapEnd) {
+          if (payoffDate && date > payoffDate) { m++; continue }
           const key = format(date, "yyyy-MM-dd")
           const existing = map.get(key) ?? []
           existing.push({ type: "debt", name: debt.name, amount: debt.minimum_payment })
@@ -138,7 +164,7 @@ export function Calendar() {
       }
     }
     return map
-  }, [eventsMap, calendarStart, bills, billCategories, incomeSources, debts])
+  }, [eventsMap, calendarStart, bills, billCategories, incomeSources, debts, debtPayoffDates])
 
   // Build running balance map from today through the visible calendar
   const balanceMap = useMemo(() => {
