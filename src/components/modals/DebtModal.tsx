@@ -23,6 +23,7 @@ import type { Debt, DebtType, PromoType } from "@/types/database"
 import { DEBT_TYPE_META } from "@/lib/debt-types"
 import { formatCurrency, cn } from "@/lib/utils"
 import { calculatePayoff } from "@/lib/payoff-engine"
+import { interestAtRisk, projectedBalanceAtPromoEnd, willMakeDeadline } from "@/lib/promo-engine"
 import { Trash2, ChevronDown, AlertTriangle, Info } from "lucide-react"
 
 interface DebtModalProps {
@@ -242,7 +243,72 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
               const rate = Number(interestRate) / 100
               if (!ap || !mp || ap <= mp || !bal || bal <= 0) return null
               const extra = ap - mp
-              // Quick interest savings: compare min-only vs actual payment
+
+              const isDeferred = promoExpanded && promoType === "deferred_interest" && promoEndDate
+              const pBal = promoExpanded && promoBalance ? Number(promoBalance) : bal
+              const pApr = promoExpanded ? Number(promoApr) / 100 : rate
+
+              if (isDeferred && pBal > 0) {
+                // Build a debt object from form values to use promo engine functions
+                const formDebt: Debt = {
+                  id: "calc", household_id: "", name: "", debt_type: "other",
+                  current_balance: bal, starting_balance: bal,
+                  interest_rate: rate, minimum_payment: mp, due_day: 1,
+                  created_at: new Date().toISOString(), last_verified_at: null,
+                  promo_type: "deferred_interest",
+                  promo_apr: pApr,
+                  promo_end_date: promoEndDate,
+                  promo_balance: pBal,
+                  actual_payment: ap,
+                }
+                const minFormDebt: Debt = { ...formDebt, actual_payment: null }
+
+                // Minimum path: misses deadline → deferred interest dumps
+                const deferredDump = interestAtRisk(minFormDebt)
+                const projBal = projectedBalanceAtPromoEnd(minFormDebt)
+                const postDumpBalance = projBal + deferredDump
+                if (postDumpBalance <= 0.01) return null
+
+                const syntheticDebt: Debt = {
+                  ...formDebt,
+                  current_balance: postDumpBalance,
+                  starting_balance: postDumpBalance,
+                  minimum_payment: mp,
+                  promo_type: null, promo_apr: null,
+                  promo_end_date: null, promo_balance: null,
+                  actual_payment: null,
+                }
+                const minResult = calculatePayoff([syntheticDebt], "minimums")
+                const minTotal = deferredDump + minResult.totalInterest
+
+                // Actual payment path
+                let actualTotal = 0
+                if (!willMakeDeadline(formDebt)) {
+                  const actualProjBal = projectedBalanceAtPromoEnd(formDebt)
+                  const actualPostDump = actualProjBal + deferredDump
+                  if (actualPostDump > 0.01) {
+                    const actualSynthetic: Debt = {
+                      ...syntheticDebt,
+                      current_balance: actualPostDump,
+                      starting_balance: actualPostDump,
+                      minimum_payment: ap,
+                    }
+                    const actualResult = calculatePayoff([actualSynthetic], "minimums")
+                    actualTotal = deferredDump + actualResult.totalInterest
+                  }
+                }
+                // If willMakeDeadline with actual payment, actualTotal = 0 (no dump)
+
+                const saved = Math.max(0, minTotal - actualTotal)
+                if (saved < 1) return null
+                return (
+                  <p className="text-xs text-success mt-1.5">
+                    +{formatCurrency(extra)} extra saves ~{formatCurrency(saved)} in interest
+                  </p>
+                )
+              }
+
+              // Standard path: no deferred interest
               const fakeDebt: Debt = {
                 id: "calc", household_id: "", name: "", debt_type: "other",
                 current_balance: bal, starting_balance: bal,
