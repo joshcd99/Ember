@@ -570,7 +570,7 @@ export function Debts() {
                 <span className="text-xs font-medium text-muted-foreground">{group.meta.pluralLabel}</span>
                 <div className="flex-1 border-t border-border" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                 {group.debts.map(debt => renderDebtCard(debt, openEdit))}
               </div>
             </div>
@@ -588,7 +588,7 @@ export function Debts() {
         })
 
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
             {sorted.map(debt => renderDebtCard(debt, openEdit))}
           </div>
         )
