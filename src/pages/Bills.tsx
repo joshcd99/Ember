@@ -308,7 +308,7 @@ export function Bills() {
           </div>
           {Array.from(debtsByType.entries()).map(([type, group]) => {
             const typeColor = DEBT_TYPE_CHART_COLORS[type]
-            const typeLabel = DEBT_TYPE_META[type].label
+            const typeLabel = DEBT_TYPE_META[type].pluralLabel
             return (
               <div key={type} className="space-y-2">
                 <div className="flex items-center gap-2 pt-1">

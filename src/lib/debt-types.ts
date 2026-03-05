@@ -2,17 +2,18 @@ import type { DebtType } from "@/types/database"
 
 export interface DebtTypeMeta {
   label: string
+  pluralLabel: string
   emoji: string
   color: string
   bgColor: string
 }
 
 export const DEBT_TYPE_META: Record<DebtType, DebtTypeMeta> = {
-  credit_card: { label: "Credit Card", emoji: "💳", color: "var(--debt-cc)", bgColor: "var(--debt-cc-bg)" },
-  personal_loan: { label: "Personal Loan", emoji: "💰", color: "var(--debt-pl)", bgColor: "var(--debt-pl-bg)" },
-  auto_loan: { label: "Auto Loan", emoji: "🚗", color: "var(--debt-auto)", bgColor: "var(--debt-auto-bg)" },
-  student_loan: { label: "Student Loan", emoji: "🎓", color: "var(--debt-student)", bgColor: "var(--debt-student-bg)" },
-  other: { label: "Other", emoji: "📋", color: "var(--debt-other)", bgColor: "var(--debt-other-bg)" },
+  credit_card: { label: "Credit Card", pluralLabel: "Credit Cards", emoji: "💳", color: "var(--debt-cc)", bgColor: "var(--debt-cc-bg)" },
+  personal_loan: { label: "Personal Loan", pluralLabel: "Personal Loans", emoji: "💰", color: "var(--debt-pl)", bgColor: "var(--debt-pl-bg)" },
+  auto_loan: { label: "Auto Loan", pluralLabel: "Auto Loans", emoji: "🚗", color: "var(--debt-auto)", bgColor: "var(--debt-auto-bg)" },
+  student_loan: { label: "Student Loan", pluralLabel: "Student Loans", emoji: "🎓", color: "var(--debt-student)", bgColor: "var(--debt-student-bg)" },
+  other: { label: "Other", pluralLabel: "Other", emoji: "📋", color: "var(--debt-other)", bgColor: "var(--debt-other-bg)" },
 }
 
 /** Raw hex colors for use in charts (CSS vars don't work in SVG/Recharts) */

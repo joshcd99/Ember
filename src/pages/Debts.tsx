@@ -405,7 +405,7 @@ export function Debts() {
             <div key={group.type} className="space-y-3">
               <div className={cn("flex items-center gap-2", gi > 0 && "pt-2")}>
                 <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: group.color }} />
-                <span className="text-xs font-medium text-muted-foreground">{group.meta.label}</span>
+                <span className="text-xs font-medium text-muted-foreground">{group.meta.pluralLabel}</span>
                 <div className="flex-1 border-t border-border" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -646,7 +646,7 @@ export function Debts() {
                 />
                 <Tooltip
                   formatter={(value, name) => {
-                    const label = name === "total" ? "Total" : (DEBT_TYPE_META[name as DebtType]?.label ?? name)
+                    const label = name === "total" ? "Total" : (DEBT_TYPE_META[name as DebtType]?.pluralLabel ?? name)
                     return [formatCurrency(Number(value)), label]
                   }}
                   labelFormatter={(label) => {
@@ -702,7 +702,7 @@ export function Debts() {
                 <div key={t} className="flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[t] }} />
                   <span className="text-xs text-muted-foreground">
-                    {DEBT_TYPE_META[t].label}{payoffLabel}
+                    {DEBT_TYPE_META[t].pluralLabel}{payoffLabel}
                   </span>
                 </div>
               )

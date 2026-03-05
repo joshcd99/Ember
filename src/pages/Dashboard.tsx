@@ -289,7 +289,7 @@ export function Dashboard() {
                     <CardContent className="pt-4 space-y-2">
                       <div className="flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: chartColor }} />
-                        <span className="text-xs font-medium text-muted-foreground">{meta.label}</span>
+                        <span className="text-xs font-medium text-muted-foreground">{meta.pluralLabel}</span>
                       </div>
                       {isDone ? (
                         <>
