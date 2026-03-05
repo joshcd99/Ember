@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAppData } from "@/contexts/DataContext"
@@ -27,6 +27,13 @@ export function Calendar() {
   const [billModalOpen, setBillModalOpen] = useState(false)
   const [incomeModalOpen, setIncomeModalOpen] = useState(false)
   const [transactionModalOpen, setTransactionModalOpen] = useState(false)
+  const detailRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (selectedDay && detailRef.current) {
+      detailRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [selectedDay])
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -290,6 +297,7 @@ export function Calendar() {
 
       {/* Day detail popover */}
       {selectedDay && (
+        <div ref={detailRef}>
         <Card>
           <CardContent>
             <div className="flex items-center justify-between mb-3">
@@ -357,6 +365,7 @@ export function Calendar() {
             </div>
           </CardContent>
         </Card>
+        </div>
       )}
 
       {/* Quick-add modals */}
