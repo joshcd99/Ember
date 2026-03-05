@@ -108,10 +108,11 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
         {selected ? format(selected, "MMM d, yyyy") : placeholder}
       </button>
 
-      {/* Portal dropdown */}
+      {/* Portal dropdown — stopPropagation prevents Radix Dialog from intercepting clicks */}
       {open && createPortal(
         <div
           ref={dropdownRef}
+          onPointerDown={(e) => e.stopPropagation()}
           className="fixed z-[100] rounded-lg border border-border bg-card p-3 shadow-lg w-[280px]"
           style={{ top: pos.top, left: pos.left }}
         >
