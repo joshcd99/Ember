@@ -250,15 +250,19 @@ export function Debts() {
   }
 
   // Build chart data: one line per debt type + total
+  // Use null after a category is paid off so the line stops
+  const categoryPayoff = selectedResult.categoryPayoffMonths
   const step = Math.max(1, Math.floor(selectedResult.months / 60))
-  const chartData: Array<Record<string, number | string>> = []
+  const chartData: Array<Record<string, number | string | null>> = []
 
   for (let m = 0; m <= selectedResult.months; m += step) {
     const snap = selectedResult.timeline[m]
     if (!snap) continue
-    const row: Record<string, number | string> = { calendarMonth: offsetToCalMonth(m) }
+    const row: Record<string, number | string | null> = { calendarMonth: offsetToCalMonth(m) }
     for (const t of activeTypes) {
-      row[t] = Math.round((snap.typeBalances[t] ?? 0) * 100) / 100
+      const payoffMonth = categoryPayoff[t] ?? Infinity
+      // Show value up to and including payoff month, null after
+      row[t] = m <= payoffMonth ? Math.round((snap.typeBalances[t] ?? 0) * 100) / 100 : null
     }
     row.total = Math.round(snap.totalBalance * 100) / 100
     chartData.push(row)
@@ -266,8 +270,11 @@ export function Debts() {
   // Ensure final month is included
   const lastSnap = selectedResult.timeline[selectedResult.months]
   if (lastSnap && (chartData.length === 0 || chartData[chartData.length - 1].calendarMonth !== offsetToCalMonth(selectedResult.months))) {
-    const row: Record<string, number | string> = { calendarMonth: offsetToCalMonth(selectedResult.months) }
-    for (const t of activeTypes) row[t] = Math.round((lastSnap.typeBalances[t] ?? 0) * 100) / 100
+    const row: Record<string, number | string | null> = { calendarMonth: offsetToCalMonth(selectedResult.months) }
+    for (const t of activeTypes) {
+      const payoffMonth = categoryPayoff[t] ?? Infinity
+      row[t] = selectedResult.months <= payoffMonth ? Math.round((lastSnap.typeBalances[t] ?? 0) * 100) / 100 : null
+    }
     row.total = Math.round(lastSnap.totalBalance * 100) / 100
     chartData.push(row)
   }
