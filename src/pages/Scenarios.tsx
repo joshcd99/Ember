@@ -233,11 +233,11 @@ export function Scenarios() {
 
   // Step 3: Build unified chart data
   const chartData = useMemo(() => {
-    let startAbs = nowAbsMonth - 6
+    let startAbs = nowAbsMonth
     let endAbs = nowAbsMonth + 36
 
     if (hasDebts && historicalResult) {
-      startAbs = Math.min(startAbs, historicalResult.earliestAbsMonth)
+      startAbs = historicalResult.earliestAbsMonth
       endAbs = Math.max(endAbs, nowAbsMonth + baseline.months, nowAbsMonth + scenario.months)
     }
 
@@ -321,11 +321,11 @@ export function Scenarios() {
       case "full":
         return chartData
       case "6mo":
-        startAbs = nowAbsMonth - 3; endAbs = nowAbsMonth + 6; break
+        startAbs = nowAbsMonth; endAbs = nowAbsMonth + 6; break
       case "1yr":
-        startAbs = nowAbsMonth - 6; endAbs = nowAbsMonth + 12; break
+        startAbs = nowAbsMonth; endAbs = nowAbsMonth + 12; break
       case "3yr":
-        startAbs = nowAbsMonth - 6; endAbs = nowAbsMonth + 36; break
+        startAbs = nowAbsMonth; endAbs = nowAbsMonth + 36; break
       case "custom":
         startAbs = customStartYear * 12 + customStartMonth
         endAbs = customEndYear * 12 + customEndMonth
