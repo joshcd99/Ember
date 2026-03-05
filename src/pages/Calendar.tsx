@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAppData } from "@/contexts/DataContext"
 import { getOccurrencesInRange } from "@/lib/recurrence"
-import { getIncomeOccurrencesInRange } from "@/lib/income-recurrence"
 import { formatCurrency } from "@/lib/utils"
 import { ChevronLeft, ChevronRight, Receipt, DollarSign, CreditCard, X } from "lucide-react"
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addDays, format, isSameMonth, isSameDay, isToday, eachDayOfInterval, startOfDay } from "date-fns"
@@ -51,7 +50,7 @@ export function Calendar() {
 
     // Income
     for (const source of incomeSources) {
-      const occurrences = getIncomeOccurrencesInRange(source, rangeStart, rangeEnd)
+      const occurrences = getOccurrencesInRange(source, rangeStart, rangeEnd)
       for (const date of occurrences) {
         addEvent(date, { type: "income", name: source.name, amount: source.amount })
       }
@@ -96,7 +95,7 @@ export function Calendar() {
       }
     }
     for (const source of incomeSources) {
-      const occurrences = getIncomeOccurrencesInRange(source, gapStart, gapEnd)
+      const occurrences = getOccurrencesInRange(source, gapStart, gapEnd)
       for (const date of occurrences) {
         const key = format(date, "yyyy-MM-dd")
         const existing = map.get(key) ?? []

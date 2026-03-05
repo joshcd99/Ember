@@ -2,7 +2,6 @@ import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAppData } from "@/contexts/DataContext"
 import { getOccurrencesInRange } from "@/lib/recurrence"
-import { getIncomeOccurrencesInRange } from "@/lib/income-recurrence"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { ChevronDown, ChevronUp, ArrowRight } from "lucide-react"
 import { startOfMonth, endOfMonth, addDays } from "date-fns"
@@ -40,7 +39,7 @@ export function CashFlowRegister() {
 
     // Income this month
     for (const source of incomeSources) {
-      const occurrences = getIncomeOccurrencesInRange(source, monthStart, monthEnd)
+      const occurrences = getOccurrencesInRange(source, monthStart, monthEnd)
       for (const date of occurrences) {
         events.push({ date, label: source.name, type: "income", amount: source.amount })
       }
