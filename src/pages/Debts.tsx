@@ -566,13 +566,13 @@ export function Debts() {
                 {activeTypes.map(t => (
                   <Area
                     key={t}
-                    type="monotone"
+                    type="linear"
                     dataKey={t}
                     stackId="debt"
                     stroke={DEBT_TYPE_CHART_COLORS[t]}
                     fill={DEBT_TYPE_CHART_COLORS[t]}
-                    fillOpacity={0.3}
-                    strokeWidth={2}
+                    fillOpacity={0.6}
+                    strokeWidth={1.5}
                     dot={false}
                   />
                 ))}
