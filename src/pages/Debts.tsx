@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/EmptyState"
 import { DebtModal } from "@/components/modals/DebtModal"
 import { Input } from "@/components/ui/input"
-import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame, Download } from "lucide-react"
+import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame, Download, ArrowUpDown } from "lucide-react"
 import {
   LineChart,
   Line,
@@ -120,6 +120,7 @@ export function Debts() {
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
   const [tableOpen, setTableOpen] = useState(false)
+  const [debtSort, setDebtSort] = useState<"category" | "name" | "balance" | "progress" | "rate">("category")
 
   // Initialize from saved settings
   const savedStrategy = (householdSettings?.preferred_strategy ?? "avalanche") as DisplayStrategy
@@ -284,6 +285,54 @@ export function Debts() {
     chartData.push(row)
   }
 
+  const renderDebtCard = (debt: Debt, onEdit: (d: Debt) => void) => {
+    const paid = debt.starting_balance - debt.current_balance
+    const pct = debt.starting_balance > 0 ? (paid / debt.starting_balance) * 100 : 0
+    const type = debt.debt_type ?? "other"
+    return (
+      <Card
+        key={debt.id}
+        className="cursor-pointer hover:border-primary/50 transition-colors"
+        onClick={() => onEdit(debt)}
+      >
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <CreditCard className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base">{debt.name}</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              {debtSort !== "category" && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+                  style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[type] + "1a", color: DEBT_TYPE_CHART_COLORS[type] }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[type] }} />
+                  {DEBT_TYPE_META[type].label}
+                </span>
+              )}
+              <Badge variant={aprBadgeVariant(debt.interest_rate)}>
+                {formatPercent(debt.interest_rate)} APR
+              </Badge>
+              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Balance</span>
+            <span className="font-semibold">{formatCurrency(debt.current_balance)}</span>
+          </div>
+          <Progress value={pct} />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{formatCurrency(paid)} paid</span>
+            <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -308,53 +357,80 @@ export function Debts() {
         </div>
       </div>
 
-      {/* Debt cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {debts.map(debt => {
-          const paid = debt.starting_balance - debt.current_balance
-          const pct = debt.starting_balance > 0 ? (paid / debt.starting_balance) * 100 : 0
-          return (
-            <Card
-              key={debt.id}
-              className="cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => openEdit(debt)}
-            >
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <CreditCard className="h-5 w-5 text-muted-foreground" />
-                    <CardTitle className="text-base">{debt.name}</CardTitle>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
-                      style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[debt.debt_type ?? "other"] + "1a", color: DEBT_TYPE_CHART_COLORS[debt.debt_type ?? "other"] }}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[debt.debt_type ?? "other"] }} />
-                      {DEBT_TYPE_META[debt.debt_type ?? "other"].label}
-                    </span>
-                    <Badge variant={aprBadgeVariant(debt.interest_rate)}>
-                      {formatPercent(debt.interest_rate)} APR
-                    </Badge>
-                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Balance</span>
-                  <span className="font-semibold">{formatCurrency(debt.current_balance)}</span>
-                </div>
-                <Progress value={pct} />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{formatCurrency(paid)} paid</span>
-                  <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
+      {/* Sort controls */}
+      <div className="flex items-center gap-2">
+        <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Sort:</span>
+        {([
+          { value: "category", label: "Category" },
+          { value: "name", label: "Name" },
+          { value: "balance", label: "Balance" },
+          { value: "progress", label: "Progress" },
+          { value: "rate", label: "Rate" },
+        ] as const).map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setDebtSort(opt.value)}
+            className={cn(
+              "px-2.5 py-1 rounded-full text-xs border transition-colors",
+              debtSort === opt.value
+                ? "border-primary bg-primary/15 text-foreground"
+                : "border-border bg-card text-muted-foreground hover:border-primary/50"
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
+
+      {/* Debt cards */}
+      {(() => {
+        const debtProgress = (d: Debt) => d.starting_balance > 0 ? (d.starting_balance - d.current_balance) / d.starting_balance : 0
+
+        if (debtSort === "category") {
+          const typeOrder = Object.keys(DEBT_TYPE_META) as DebtType[]
+          const grouped = typeOrder
+            .map(type => ({
+              type,
+              meta: DEBT_TYPE_META[type],
+              color: DEBT_TYPE_CHART_COLORS[type],
+              debts: debts
+                .filter(d => (d.debt_type ?? "other") === type)
+                .sort((a, b) => a.name.localeCompare(b.name)),
+            }))
+            .filter(g => g.debts.length > 0)
+
+          return grouped.map((group, gi) => (
+            <div key={group.type} className="space-y-3">
+              <div className={cn("flex items-center gap-2", gi > 0 && "pt-2")}>
+                <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: group.color }} />
+                <span className="text-xs font-medium text-muted-foreground">{group.meta.label}</span>
+                <div className="flex-1 border-t border-border" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {group.debts.map(debt => renderDebtCard(debt, openEdit))}
+              </div>
+            </div>
+          ))
+        }
+
+        const sorted = [...debts].sort((a, b) => {
+          switch (debtSort) {
+            case "name": return a.name.localeCompare(b.name)
+            case "balance": return b.current_balance - a.current_balance
+            case "progress": return debtProgress(b) - debtProgress(a)
+            case "rate": return b.interest_rate - a.interest_rate
+            default: return 0
+          }
+        })
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {sorted.map(debt => renderDebtCard(debt, openEdit))}
+          </div>
+        )
+      })()}
 
       {/* Strategy comparison */}
       <div>
