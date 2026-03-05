@@ -24,7 +24,7 @@ export function formatCurrencyExact(amount: number): string {
 }
 
 export function formatPercent(rate: number): string {
-  return `${(rate * 100).toFixed(1)}%`
+  return `${(rate * 100).toFixed(2)}%`
 }
 
 export function formatDate(date: Date | string): string {
