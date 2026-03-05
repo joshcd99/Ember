@@ -467,11 +467,17 @@ export function Debts() {
                     <div className="pt-2 border-t border-border mt-2">
                       <p className="text-xs text-muted-foreground mb-1">Payoff order:</p>
                       <div className="space-y-1">
-                        {result.debtPayoffOrder.map((d, i) => (
-                          <p key={d.id} className="text-xs">
-                            {i + 1}. {d.name} — month {d.month}
-                          </p>
-                        ))}
+                        {result.debtPayoffOrder.map((d, i) => {
+                          const debt = debts.find(db => db.id === d.id)
+                          const detail = strategy === "snowball"
+                            ? debt ? formatCurrency(debt.current_balance) : ""
+                            : debt ? formatPercent(debt.interest_rate) : ""
+                          return (
+                            <p key={d.id} className="text-xs">
+                              {i + 1}. {d.name} ({detail}) — month {d.month}
+                            </p>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
