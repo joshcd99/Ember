@@ -116,8 +116,8 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
         await addDebt(data)
       }
       onClose()
-    } catch {
-      // Error handling could be improved
+    } catch (err) {
+      console.error("DebtModal save failed:", err)
     } finally {
       setSaving(false)
     }
