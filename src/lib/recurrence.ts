@@ -14,10 +14,10 @@ export type Recurrent = (Bill | IncomeSource) & {
   recurrence_end_occurrences?: number | null
 }
 
-/** Get the anchor date string from a recurrent item */
-function getAnchorDate(item: Recurrent): string {
-  if ("next_due_date" in item) return item.next_due_date
-  return item.next_expected_date
+/** Parse the anchor date from a recurrent item as local time */
+function parseAnchorDate(item: Recurrent): Date {
+  const s = "next_due_date" in item ? item.next_due_date : item.next_expected_date
+  return new Date(s.includes("T") ? s : s + "T00:00")
 }
 
 interface NormalizedRecurrence {
@@ -63,7 +63,8 @@ function stepDate(date: Date, interval: number, unit: RecurrenceUnit): Date {
 
 function isPastEnd(rec: NormalizedRecurrence, date: Date, occurrenceCount: number): boolean {
   if (rec.endType === "on_date" && rec.endDate) {
-    return !isBefore(date, addDays(startOfDay(new Date(rec.endDate)), 1))
+    const end = new Date(rec.endDate.includes("T") ? rec.endDate : rec.endDate + "T00:00")
+    return !isBefore(date, addDays(startOfDay(end), 1))
   }
   if (rec.endType === "after_occurrences" && rec.endOccurrences != null) {
     return occurrenceCount >= rec.endOccurrences
@@ -73,7 +74,7 @@ function isPastEnd(rec: NormalizedRecurrence, date: Date, occurrenceCount: numbe
 
 export function getNextDueDate(item: Recurrent, fromDate: Date): Date | null {
   const rec = normalizeRecurrence(item)
-  let current = startOfDay(new Date(getAnchorDate(item)))
+  let current = startOfDay(parseAnchorDate(item))
   const from = startOfDay(fromDate)
   let iterations = 0
   let occurrenceCount = 0
@@ -95,7 +96,7 @@ export function getNextDueDate(item: Recurrent, fromDate: Date): Date | null {
 export function getOccurrencesInRange(item: Recurrent, start: Date, end: Date): Date[] {
   const rec = normalizeRecurrence(item)
   const results: Date[] = []
-  let current = startOfDay(new Date(getAnchorDate(item)))
+  let current = startOfDay(parseAnchorDate(item))
   const rangeStart = startOfDay(start)
   const rangeEnd = startOfDay(end)
   let iterations = 0
