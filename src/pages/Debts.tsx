@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/EmptyState"
 import { DebtModal } from "@/components/modals/DebtModal"
 import { Input } from "@/components/ui/input"
-import { Check, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame } from "lucide-react"
+import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame } from "lucide-react"
 import {
   AreaChart,
   Area,
@@ -120,6 +120,7 @@ export function Debts() {
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
+  const [tableOpen, setTableOpen] = useState(false)
 
   // Initialize from saved settings
   const savedStrategy = (householdSettings?.preferred_strategy ?? "avalanche") as DisplayStrategy
@@ -599,6 +600,51 @@ export function Debts() {
               </div>
             ))}
           </div>
+
+          {/* Collapsible monthly balance table */}
+          <button
+            type="button"
+            onClick={() => setTableOpen(o => !o)}
+            className="flex items-center gap-2 mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronDown className={cn("h-4 w-4 transition-transform", !tableOpen && "-rotate-90")} />
+            Monthly breakdown
+          </button>
+          {tableOpen && (
+            <div className="mt-2 overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground sticky left-0 bg-muted/50">Month</th>
+                    {debts.map(d => (
+                      <th key={d.id} className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{d.name}</th>
+                    ))}
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedResult.timeline.map((snap) => {
+                    const cal = offsetToCalMonth(snap.month)
+                    const [y, m] = cal.split("-").map(Number)
+                    const label = `${MONTH_NAMES[m - 1]} '${String(y).slice(2)}`
+                    const total = Object.values(snap.balances).reduce((s, b) => s + b, 0)
+                    if (total < 0.01 && snap.month !== 0) return null
+                    return (
+                      <tr key={snap.month} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <td className="px-3 py-1.5 text-muted-foreground sticky left-0 bg-card">{label}</td>
+                        {debts.map(d => (
+                          <td key={d.id} className="text-right px-3 py-1.5 tabular-nums">
+                            {snap.balances[d.id] > 0.01 ? formatCurrency(snap.balances[d.id]) : <span className="text-success">Paid</span>}
+                          </td>
+                        ))}
+                        <td className="text-right px-3 py-1.5 font-medium tabular-nums">{formatCurrency(total)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
