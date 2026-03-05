@@ -24,7 +24,7 @@ import {
   getCheckinStreak,
 } from "@/lib/mock-data"
 import { calculatePayoff, getHighestImpactAction, type Strategy } from "@/lib/payoff-engine"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatCountdown } from "@/lib/utils"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import type { DebtType } from "@/types/database"
 import { differenceInDays } from "date-fns"
@@ -306,9 +306,9 @@ export function Dashboard() {
                           {payoffDate && (
                             <div className="space-y-0.5">
                               <p className="text-[10px] text-muted-foreground">{formatDate(payoffDate)}</p>
-                              {daysLeft != null && (
+                              {daysLeft != null && formatCountdown(daysLeft) && (
                                 <p className="text-xs font-semibold" style={{ color: chartColor }}>
-                                  {daysLeft} days
+                                  {formatCountdown(daysLeft)}
                                 </p>
                               )}
                             </div>

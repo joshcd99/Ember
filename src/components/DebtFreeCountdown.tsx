@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatCountdown } from "@/lib/utils"
 import { differenceInDays } from "date-fns"
 import { Share2, X, Flame } from "lucide-react"
 
@@ -27,15 +27,6 @@ export function DebtFreeCountdown({ debtFreeDate, months, totalDebt, startingDeb
   }, [debtFreeDate])
 
   const isDebtFree = totalDebt <= 0.01 && startingDebt > 0
-
-  const formatCountdown = (days: number) => {
-    if (days <= 0) return null
-    if (days < 30) return `${days} days`
-    if (days < 365) return `${days} days`
-    const m = Math.floor(days / 30.44)
-    const d = Math.round(days % 30.44)
-    return `${m} months, ${d} days`
-  }
 
   const handleShare = async () => {
     if (!shareCardRef.current) return

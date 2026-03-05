@@ -38,3 +38,16 @@ export function formatDate(date: Date | string): string {
 export function monthsBetween(start: Date, end: Date): number {
   return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
 }
+
+export function formatCountdown(days: number): string | null {
+  if (days <= 0) return null
+  const y = Math.floor(days / 365.25)
+  const remaining = days - y * 365.25
+  const m = Math.floor(remaining / 30.44)
+  const d = Math.round(remaining % 30.44)
+  const parts: string[] = []
+  if (y > 0) parts.push(`${y}y`)
+  if (m > 0) parts.push(`${m}mo`)
+  if (d > 0 || parts.length === 0) parts.push(`${d}d`)
+  return parts.join(" ")
+}
