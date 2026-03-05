@@ -125,13 +125,7 @@ export function getTotalStartingDebt(debts: Debt[]): number {
 }
 
 export function getMonthlyIncome(sources: IncomeSource[]): number {
-  return sources.reduce((sum, s) => {
-    switch (s.frequency) {
-      case "weekly": return sum + s.amount * 4.33
-      case "biweekly": return sum + s.amount * 2.167
-      case "monthly": return sum + s.amount
-    }
-  }, 0)
+  return sources.reduce((sum, s) => sum + s.amount * recurrenceToMonthlyMultiplier(s), 0)
 }
 
 export function getMonthlyBills(bills: Bill[]): number {

@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAppData } from "@/contexts/DataContext"
-import type { IncomeSource, Frequency } from "@/types/database"
+import type { IncomeSource, Frequency, RecurrenceUnit, RecurrenceEndType } from "@/types/database"
 import { Trash2 } from "lucide-react"
 
 interface IncomeSourceModalProps {
@@ -18,44 +18,138 @@ interface IncomeSourceModalProps {
   source?: IncomeSource | null
 }
 
+// Preset definitions for quick selection
+const PRESETS = [
+  { label: "Weekly", interval: 1, unit: "week" as RecurrenceUnit },
+  { label: "Every 2 weeks", interval: 2, unit: "week" as RecurrenceUnit },
+  { label: "Monthly", interval: 1, unit: "month" as RecurrenceUnit },
+  { label: "Every 3 months", interval: 3, unit: "month" as RecurrenceUnit },
+  { label: "Yearly", interval: 1, unit: "year" as RecurrenceUnit },
+] as const
+
+function recurrenceToLegacyFrequency(interval: number, unit: RecurrenceUnit): Frequency {
+  if (unit === "week" && interval === 1) return "weekly"
+  if (unit === "week" && interval === 2) return "biweekly"
+  return "monthly"
+}
+
 export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalProps) {
   const { addIncomeSource, updateIncomeSource, deleteIncomeSource } = useAppData()
   const isEdit = !!source
 
   const [name, setName] = useState("")
   const [amount, setAmount] = useState("")
-  const [frequency, setFrequency] = useState<Frequency>("monthly")
   const [nextExpectedDate, setNextExpectedDate] = useState("")
   const [isVariable, setIsVariable] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  // Recurrence state
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1)
+  const [recurrenceUnit, setRecurrenceUnit] = useState<RecurrenceUnit>("month")
+  const [recurrenceDaysOfWeek, setRecurrenceDaysOfWeek] = useState<number[]>([])
+  const [recurrenceEndType, setRecurrenceEndType] = useState<RecurrenceEndType>("never")
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState("")
+  const [recurrenceEndOccurrences, setRecurrenceEndOccurrences] = useState("")
+  const [showCustom, setShowCustom] = useState(false)
+
   useEffect(() => {
     if (source) {
       setName(source.name)
       setAmount(String(source.amount))
-      setFrequency(source.frequency)
       setNextExpectedDate(source.next_expected_date)
       setIsVariable(source.is_variable)
+
+      // Populate recurrence from source fields or legacy frequency
+      if (source.recurrence_type && source.recurrence_unit) {
+        setRecurrenceInterval(source.recurrence_interval ?? 1)
+        setRecurrenceUnit(source.recurrence_unit)
+        setRecurrenceDaysOfWeek(source.recurrence_days_of_week ?? [])
+        setRecurrenceEndType(source.recurrence_end_type ?? "never")
+        setRecurrenceEndDate(source.recurrence_end_date ?? "")
+        setRecurrenceEndOccurrences(source.recurrence_end_occurrences ? String(source.recurrence_end_occurrences) : "")
+        // Determine if custom panel should show
+        const matchesPreset = PRESETS.some(p => p.interval === (source.recurrence_interval ?? 1) && p.unit === source.recurrence_unit)
+        const hasDays = (source.recurrence_days_of_week?.length ?? 0) > 0
+        const hasEnd = (source.recurrence_end_type ?? "never") !== "never"
+        setShowCustom(!matchesPreset || hasDays || hasEnd)
+      } else {
+        // Map legacy frequency
+        switch (source.frequency) {
+          case "weekly":
+            setRecurrenceInterval(1); setRecurrenceUnit("week"); break
+          case "biweekly":
+            setRecurrenceInterval(2); setRecurrenceUnit("week"); break
+          default:
+            setRecurrenceInterval(1); setRecurrenceUnit("month")
+        }
+        setRecurrenceDaysOfWeek([])
+        setRecurrenceEndType("never")
+        setRecurrenceEndDate("")
+        setRecurrenceEndOccurrences("")
+        setShowCustom(false)
+      }
     } else {
       setName("")
       setAmount("")
-      setFrequency("monthly")
       setNextExpectedDate("")
       setIsVariable(false)
+      setRecurrenceInterval(1)
+      setRecurrenceUnit("month")
+      setRecurrenceDaysOfWeek([])
+      setRecurrenceEndType("never")
+      setRecurrenceEndDate("")
+      setRecurrenceEndOccurrences("")
+      setShowCustom(false)
     }
     setConfirmDelete(false)
   }, [source, open])
 
+  // Active preset detection
+  const activePresetIndex = showCustom
+    ? -1
+    : PRESETS.findIndex(p => p.interval === recurrenceInterval && p.unit === recurrenceUnit)
+
+  const handlePresetClick = (preset: typeof PRESETS[number]) => {
+    setRecurrenceInterval(preset.interval)
+    setRecurrenceUnit(preset.unit)
+    setRecurrenceDaysOfWeek([])
+    setRecurrenceEndType("never")
+    setRecurrenceEndDate("")
+    setRecurrenceEndOccurrences("")
+    setShowCustom(false)
+  }
+
+  const toggleDayOfWeek = (day: number) => {
+    setRecurrenceDaysOfWeek(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b)
+    )
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
-      const data = {
+      // Derive recurrence_type
+      let recurrenceType: string
+      if (recurrenceUnit === "week" && recurrenceInterval === 1) recurrenceType = "weekly"
+      else if (recurrenceUnit === "week" && recurrenceInterval === 2) recurrenceType = "biweekly"
+      else if (recurrenceUnit === "month" && recurrenceInterval === 1) recurrenceType = "monthly"
+      else if (recurrenceUnit === "year" && recurrenceInterval === 1) recurrenceType = "yearly"
+      else recurrenceType = "custom"
+
+      const data: Omit<IncomeSource, "id" | "household_id"> = {
         name,
         amount: Number(amount),
-        frequency,
+        frequency: recurrenceToLegacyFrequency(recurrenceInterval, recurrenceUnit),
         next_expected_date: nextExpectedDate,
         is_variable: isVariable,
+        recurrence_type: recurrenceType as IncomeSource["recurrence_type"],
+        recurrence_interval: recurrenceInterval,
+        recurrence_unit: recurrenceUnit,
+        recurrence_days_of_week: recurrenceDaysOfWeek.length > 0 ? recurrenceDaysOfWeek : undefined,
+        recurrence_end_type: recurrenceEndType,
+        recurrence_end_date: recurrenceEndType === "on_date" ? recurrenceEndDate || null : null,
+        recurrence_end_occurrences: recurrenceEndType === "after_occurrences" ? Number(recurrenceEndOccurrences) || null : null,
       }
       if (isEdit) {
         await updateIncomeSource(source.id, data)
@@ -85,10 +179,11 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
   }
 
   const valid = name.trim() && Number(amount) > 0 && nextExpectedDate
+  const dayLabels = ["S", "M", "T", "W", "T", "F", "S"]
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit ${source.name}` : "Add Income Source"}</DialogTitle>
         </DialogHeader>
@@ -114,26 +209,153 @@ export function IncomeSourceModal({ open, onClose, source }: IncomeSourceModalPr
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Frequency</label>
-              <select
-                value={frequency}
-                onChange={(e) => setFrequency(e.target.value as Frequency)}
-                className="flex h-10 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground"
-              >
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Every 2 weeks</option>
-                <option value="monthly">Monthly</option>
-              </select>
+              <label className="text-sm font-medium">Next Expected Date</label>
+              <Input
+                type="date"
+                value={nextExpectedDate}
+                onChange={(e) => setNextExpectedDate(e.target.value)}
+              />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Next Expected Date</label>
-            <Input
-              type="date"
-              value={nextExpectedDate}
-              onChange={(e) => setNextExpectedDate(e.target.value)}
-            />
+          {/* Recurrence builder */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Frequency</label>
+            {/* Quick presets */}
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map((preset, i) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => handlePresetClick(preset)}
+                  className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                    activePresetIndex === i
+                      ? "border-primary bg-primary/15 text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setShowCustom(true)}
+                className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                  showCustom
+                    ? "border-primary bg-primary/15 text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                Custom...
+              </button>
+            </div>
+
+            {/* Custom recurrence panel */}
+            {showCustom && (
+              <div className="space-y-3 rounded-lg border border-border p-3 bg-muted/30">
+                {/* Repeat every N units */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Repeat every</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={recurrenceInterval}
+                    onChange={(e) => setRecurrenceInterval(Math.max(1, Number(e.target.value)))}
+                    className="h-8 w-16 text-sm"
+                  />
+                  <select
+                    value={recurrenceUnit}
+                    onChange={(e) => setRecurrenceUnit(e.target.value as RecurrenceUnit)}
+                    className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground"
+                  >
+                    <option value="day">days</option>
+                    <option value="week">weeks</option>
+                    <option value="month">months</option>
+                    <option value="year">years</option>
+                  </select>
+                </div>
+
+                {/* Day-of-week toggles (only for weeks) */}
+                {recurrenceUnit === "week" && (
+                  <div className="space-y-1.5">
+                    <span className="text-sm text-muted-foreground">On</span>
+                    <div className="flex gap-1.5">
+                      {dayLabels.map((label, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => toggleDayOfWeek(i)}
+                          className={`h-8 w-8 rounded-full text-xs font-medium transition-colors ${
+                            recurrenceDaysOfWeek.includes(i)
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* End condition */}
+                <div className="space-y-2">
+                  <span className="text-sm text-muted-foreground">Ends</span>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="incomeEndType"
+                        checked={recurrenceEndType === "never"}
+                        onChange={() => setRecurrenceEndType("never")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">Never</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="incomeEndType"
+                        checked={recurrenceEndType === "on_date"}
+                        onChange={() => setRecurrenceEndType("on_date")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">On date</span>
+                      {recurrenceEndType === "on_date" && (
+                        <Input
+                          type="date"
+                          value={recurrenceEndDate}
+                          onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                          className="h-8 w-40 text-sm"
+                        />
+                      )}
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="incomeEndType"
+                        checked={recurrenceEndType === "after_occurrences"}
+                        onChange={() => setRecurrenceEndType("after_occurrences")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">After</span>
+                      {recurrenceEndType === "after_occurrences" && (
+                        <>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={recurrenceEndOccurrences}
+                            onChange={(e) => setRecurrenceEndOccurrences(e.target.value)}
+                            className="h-8 w-16 text-sm"
+                          />
+                          <span className="text-sm">occurrences</span>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <label className="flex items-center gap-3 cursor-pointer">

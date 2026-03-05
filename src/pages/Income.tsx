@@ -7,6 +7,7 @@ import { IncomeSourceModal } from "@/components/modals/IncomeSourceModal"
 import { Plus, DollarSign, Pencil } from "lucide-react"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome } from "@/lib/mock-data"
+import { formatRecurrence } from "@/lib/recurrence"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import type { IncomeSource } from "@/types/database"
 
@@ -22,14 +23,7 @@ export function Income() {
 
   const monthlyIncome = getMonthlyIncome(incomeSources)
 
-  const frequencyLabel = (f: string) => {
-    switch (f) {
-      case "weekly": return "Weekly"
-      case "biweekly": return "Every 2 weeks"
-      case "monthly": return "Monthly"
-      default: return f
-    }
-  }
+
 
   const openAdd = () => { setEditingSource(null); setModalOpen(true) }
   const openEdit = (s: IncomeSource) => { setEditingSource(s); setModalOpen(true) }
@@ -81,7 +75,7 @@ export function Income() {
                   <div>
                     <p className="font-medium">{source.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {frequencyLabel(source.frequency)} &middot; Next: {formatDate(source.next_expected_date)}
+                      {formatRecurrence(source)} &middot; Next: {formatDate(source.next_expected_date)}
                     </p>
                   </div>
                 </div>

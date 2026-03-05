@@ -28,7 +28,14 @@ create table public.income_sources (
   amount numeric(10,2) not null,
   frequency text not null check (frequency in ('weekly', 'biweekly', 'monthly')),
   next_expected_date date not null,
-  is_variable boolean default false not null
+  is_variable boolean default false not null,
+  recurrence_type text,
+  recurrence_interval integer,
+  recurrence_unit text,
+  recurrence_days_of_week integer[],
+  recurrence_end_type text,
+  recurrence_end_date date,
+  recurrence_end_occurrences integer
 );
 
 create table public.bills (
