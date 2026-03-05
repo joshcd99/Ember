@@ -112,7 +112,7 @@ export function DatePicker({ value, onChange, className, placeholder = "Select d
       {open && createPortal(
         <div
           ref={dropdownRef}
-          onPointerDown={(e) => e.stopPropagation()}
+          data-datepicker-dropdown
           className="fixed z-[100] rounded-lg border border-border bg-card p-3 shadow-lg w-[280px]"
           style={{ top: pos.top, left: pos.left }}
         >
