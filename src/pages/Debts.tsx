@@ -636,14 +636,37 @@ export function Debts() {
                     const label = `${MONTH_NAMES[m - 1]} '${String(y).slice(2)}`
                     const total = Object.values(snap.balances).reduce((s, b) => s + b, 0)
                     if (total < 0.01 && snap.month !== 0) return null
+                    const prevSnap = snap.month > 0 ? selectedResult.timeline[snap.month - 1] : null
                     return (
                       <tr key={snap.month} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-3 py-1.5 text-muted-foreground sticky left-0 bg-card">{label}</td>
-                        {debts.map(d => (
-                          <td key={d.id} className="text-right px-3 py-1.5 tabular-nums">
-                            {snap.balances[d.id] > 0.01 ? formatCurrency(snap.balances[d.id]) : <span className="text-success">Paid</span>}
-                          </td>
-                        ))}
+                        {debts.map(d => {
+                          const bal = snap.balances[d.id]
+                          // Payment = previous balance after interest - current balance
+                          let payment = 0
+                          if (prevSnap && snap.month > 0) {
+                            const prevBal = prevSnap.balances[d.id] ?? 0
+                            const afterInterest = prevBal * (1 + d.interest_rate / 12)
+                            payment = Math.max(0, afterInterest - bal)
+                          }
+                          return (
+                            <td key={d.id} className="text-right px-3 py-1.5 tabular-nums">
+                              {bal > 0.01 ? (
+                                <div>
+                                  <div>{formatCurrency(bal)}</div>
+                                  {payment > 0.01 && <div className="text-[10px] text-success">-{formatCurrency(payment)}</div>}
+                                </div>
+                              ) : prevSnap && (prevSnap.balances[d.id] ?? 0) > 0.01 ? (
+                                <div>
+                                  <span className="text-success">Paid</span>
+                                  {payment > 0.01 && <div className="text-[10px] text-success">-{formatCurrency(payment)}</div>}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          )
+                        })}
                         <td className="text-right px-3 py-1.5 font-medium tabular-nums">{formatCurrency(total)}</td>
                       </tr>
                     )
