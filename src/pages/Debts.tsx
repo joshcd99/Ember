@@ -336,12 +336,58 @@ export function Debts() {
     // Quick interest savings estimate for extra payments
     let interestSavedEstimate = 0
     if (payingExtra && debt.interest_rate > 0) {
-      const minResult = calculatePayoff([debt], "minimums")
-      const extraResult = calculatePayoff(
-        [{ ...debt, minimum_payment: debt.actual_payment! }],
-        "minimums"
-      )
-      interestSavedEstimate = Math.max(0, minResult.totalInterest - extraResult.totalInterest)
+      if (debt.promo_type === "deferred_interest" && isPromo) {
+        // Deferred interest path: must account for the interest dump at deadline
+        // Minimum-only: will miss deadline → deferred interest dumps onto balance
+        const minDebt = { ...debt, actual_payment: null } as Debt
+        const projBal = projectedBalanceAtPromoEnd(minDebt)
+        const deferredDump = interestAtRisk(debt)
+        const postDumpBalance = projBal + deferredDump
+        if (postDumpBalance > 0.01) {
+          const syntheticDebt: Debt = {
+            ...debt,
+            current_balance: postDumpBalance,
+            starting_balance: postDumpBalance,
+            minimum_payment: debt.minimum_payment,
+            promo_type: null,
+            promo_apr: null,
+            promo_end_date: null,
+            promo_balance: null,
+          }
+          const minResult = calculatePayoff([syntheticDebt], "minimums")
+          // Total cost on minimum path = deferred dump + post-dump interest
+          const minTotalInterest = deferredDump + minResult.totalInterest
+
+          // Actual payment path
+          let actualTotalInterest = 0
+          if (!willMakeDeadline(debt)) {
+            // Still misses deadline even with actual payment
+            const actualProjBal = projectedBalanceAtPromoEnd(debt)
+            const actualPostDump = actualProjBal + deferredDump
+            if (actualPostDump > 0.01) {
+              const actualSynthetic: Debt = {
+                ...syntheticDebt,
+                current_balance: actualPostDump,
+                starting_balance: actualPostDump,
+                minimum_payment: debt.actual_payment!,
+              }
+              const actualResult = calculatePayoff([actualSynthetic], "minimums")
+              actualTotalInterest = deferredDump + actualResult.totalInterest
+            }
+          }
+          // If willMakeDeadline with actual payment, actualTotalInterest = 0 (no dump)
+
+          interestSavedEstimate = Math.max(0, minTotalInterest - actualTotalInterest)
+        }
+      } else {
+        // Standard path: no deferred interest concern
+        const minResult = calculatePayoff([debt], "minimums")
+        const extraResult = calculatePayoff(
+          [{ ...debt, minimum_payment: debt.actual_payment! }],
+          "minimums"
+        )
+        interestSavedEstimate = Math.max(0, minResult.totalInterest - extraResult.totalInterest)
+      }
     }
 
     // Promo-specific calculations

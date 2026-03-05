@@ -5,6 +5,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils"
 import { calculatePayoff } from "@/lib/payoff-engine"
+import { interestAtRisk, projectedBalanceAtPromoEnd, willMakeDeadline } from "@/lib/promo-engine"
 import type { Debt } from "@/types/database"
 
 interface PayoffCelebrationModalProps {
@@ -14,15 +15,74 @@ interface PayoffCelebrationModalProps {
 }
 
 function computeInterestSavings(debt: Debt) {
-  // Run minimum-only projection from starting balance
+  const effectivePayment = debt.actual_payment ?? debt.minimum_payment
+  const hadExtraPayments = effectivePayment > debt.minimum_payment
+
+  // Deferred interest promo path
+  if (debt.promo_type === "deferred_interest" && debt.promo_end_date) {
+    const deferredDump = interestAtRisk(debt)
+
+    // Minimum-only projection: assume would miss deadline → dump happens
+    const minDebt: Debt = { ...debt, actual_payment: null, current_balance: debt.starting_balance }
+    const projBal = projectedBalanceAtPromoEnd(minDebt)
+    const postDumpBalance = projBal + deferredDump
+    let minTotalInterest = deferredDump
+    let minMonths = 0
+    if (postDumpBalance > 0.01) {
+      const syntheticDebt: Debt = {
+        ...debt,
+        current_balance: postDumpBalance,
+        starting_balance: postDumpBalance,
+        minimum_payment: debt.minimum_payment,
+        promo_type: null,
+        promo_apr: null,
+        promo_end_date: null,
+        promo_balance: null,
+      }
+      const minResult = calculatePayoff([syntheticDebt], "minimums")
+      minTotalInterest += minResult.totalInterest
+      minMonths = minResult.months
+    }
+
+    // Actual payment: if beat the deadline, interest = $0
+    let actualTotalInterest = 0
+    let actualMonths = 0
+    if (!willMakeDeadline(debt)) {
+      const actualProjBal = projectedBalanceAtPromoEnd(debt)
+      const actualPostDump = actualProjBal + deferredDump
+      if (actualPostDump > 0.01) {
+        const actualSynthetic: Debt = {
+          ...debt,
+          current_balance: actualPostDump,
+          starting_balance: actualPostDump,
+          minimum_payment: effectivePayment,
+          promo_type: null,
+          promo_apr: null,
+          promo_end_date: null,
+          promo_balance: null,
+        }
+        const actualResult = calculatePayoff([actualSynthetic], "minimums")
+        actualTotalInterest = deferredDump + actualResult.totalInterest
+        actualMonths = actualResult.months
+      }
+    }
+
+    return {
+      interestSaved: Math.max(0, minTotalInterest - actualTotalInterest),
+      monthsSaved: Math.max(0, minMonths - actualMonths),
+      totalInterestPaid: actualTotalInterest,
+      totalMonthsPaid: actualMonths,
+      hadExtraPayments,
+    }
+  }
+
+  // Standard path
   const minOnlyDebt: Debt = {
     ...debt,
     current_balance: debt.starting_balance,
   }
   const minResult = calculatePayoff([minOnlyDebt], "minimums")
 
-  // Run actual-payment projection (using actual_payment as the minimum)
-  const effectivePayment = debt.actual_payment ?? debt.minimum_payment
   const actualDebt: Debt = {
     ...debt,
     current_balance: debt.starting_balance,
@@ -35,7 +95,7 @@ function computeInterestSavings(debt: Debt) {
     monthsSaved: Math.max(0, minResult.months - actualResult.months),
     totalInterestPaid: actualResult.totalInterest,
     totalMonthsPaid: actualResult.months,
-    hadExtraPayments: effectivePayment > debt.minimum_payment,
+    hadExtraPayments,
   }
 }
 
