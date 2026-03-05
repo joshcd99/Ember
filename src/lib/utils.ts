@@ -28,7 +28,10 @@ export function formatPercent(rate: number): string {
 }
 
 export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date
+  // Append T00:00 to date-only strings so they parse as local time, not UTC
+  const d = typeof date === "string"
+    ? new Date(date.includes("T") ? date : date + "T00:00")
+    : date
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
