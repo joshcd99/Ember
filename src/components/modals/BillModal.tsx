@@ -21,11 +21,12 @@ interface BillModalProps {
 
 // Preset definitions for quick selection
 const PRESETS = [
-  { label: "Weekly", interval: 1, unit: "week" as RecurrenceUnit },
-  { label: "Every 2 weeks", interval: 2, unit: "week" as RecurrenceUnit },
-  { label: "Monthly", interval: 1, unit: "month" as RecurrenceUnit },
-  { label: "Every 3 months", interval: 3, unit: "month" as RecurrenceUnit },
-  { label: "Yearly", interval: 1, unit: "year" as RecurrenceUnit },
+  { label: "Weekly", interval: 1, unit: "week" as RecurrenceUnit, daysOfMonth: undefined as number[] | undefined },
+  { label: "Every 2 weeks", interval: 2, unit: "week" as RecurrenceUnit, daysOfMonth: undefined as number[] | undefined },
+  { label: "1st & 15th", interval: 1, unit: "month" as RecurrenceUnit, daysOfMonth: [1, 15] },
+  { label: "Monthly", interval: 1, unit: "month" as RecurrenceUnit, daysOfMonth: undefined as number[] | undefined },
+  { label: "Every 3 months", interval: 3, unit: "month" as RecurrenceUnit, daysOfMonth: undefined as number[] | undefined },
+  { label: "Yearly", interval: 1, unit: "year" as RecurrenceUnit, daysOfMonth: undefined as number[] | undefined },
 ] as const
 
 function recurrenceToLegacyFrequency(interval: number, unit: RecurrenceUnit): Frequency {
@@ -49,6 +50,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
   const [recurrenceInterval, setRecurrenceInterval] = useState(1)
   const [recurrenceUnit, setRecurrenceUnit] = useState<RecurrenceUnit>("month")
   const [recurrenceDaysOfWeek, setRecurrenceDaysOfWeek] = useState<number[]>([])
+  const [recurrenceDaysOfMonth, setRecurrenceDaysOfMonth] = useState<number[]>([])
   const [recurrenceEndType, setRecurrenceEndType] = useState<RecurrenceEndType>("never")
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("")
   const [recurrenceEndOccurrences, setRecurrenceEndOccurrences] = useState("")
@@ -72,14 +74,21 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
         setRecurrenceInterval(bill.recurrence_interval ?? 1)
         setRecurrenceUnit(bill.recurrence_unit)
         setRecurrenceDaysOfWeek(bill.recurrence_days_of_week ?? [])
+        setRecurrenceDaysOfMonth(bill.recurrence_days_of_month ?? [])
         setRecurrenceEndType(bill.recurrence_end_type ?? "never")
         setRecurrenceEndDate(bill.recurrence_end_date ?? "")
         setRecurrenceEndOccurrences(bill.recurrence_end_occurrences ? String(bill.recurrence_end_occurrences) : "")
         // Determine if custom panel should show
-        const matchesPreset = PRESETS.some(p => p.interval === (bill.recurrence_interval ?? 1) && p.unit === bill.recurrence_unit)
+        const billDaysOfMonth = bill.recurrence_days_of_month ?? []
+        const matchesPreset = PRESETS.some(p =>
+          p.interval === (bill.recurrence_interval ?? 1) &&
+          p.unit === bill.recurrence_unit &&
+          JSON.stringify(p.daysOfMonth ?? []) === JSON.stringify(billDaysOfMonth)
+        )
         const hasDays = (bill.recurrence_days_of_week?.length ?? 0) > 0
+        const hasDaysOfMonth = billDaysOfMonth.length > 0 && !matchesPreset
         const hasEnd = (bill.recurrence_end_type ?? "never") !== "never"
-        setShowCustom(!matchesPreset || hasDays || hasEnd)
+        setShowCustom(!matchesPreset || hasDays || hasDaysOfMonth || hasEnd)
       } else {
         // Map legacy frequency
         switch (bill.frequency) {
@@ -91,6 +100,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
             setRecurrenceInterval(1); setRecurrenceUnit("month")
         }
         setRecurrenceDaysOfWeek([])
+        setRecurrenceDaysOfMonth([])
         setRecurrenceEndType("never")
         setRecurrenceEndDate("")
         setRecurrenceEndOccurrences("")
@@ -104,6 +114,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
       setRecurrenceInterval(1)
       setRecurrenceUnit("month")
       setRecurrenceDaysOfWeek([])
+      setRecurrenceDaysOfMonth([])
       setRecurrenceEndType("never")
       setRecurrenceEndDate("")
       setRecurrenceEndOccurrences("")
@@ -117,12 +128,17 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
   // Active preset detection
   const activePresetIndex = showCustom
     ? -1
-    : PRESETS.findIndex(p => p.interval === recurrenceInterval && p.unit === recurrenceUnit)
+    : PRESETS.findIndex(p =>
+        p.interval === recurrenceInterval &&
+        p.unit === recurrenceUnit &&
+        JSON.stringify(p.daysOfMonth ?? []) === JSON.stringify(recurrenceDaysOfMonth)
+      )
 
   const handlePresetClick = (preset: typeof PRESETS[number]) => {
     setRecurrenceInterval(preset.interval)
     setRecurrenceUnit(preset.unit)
     setRecurrenceDaysOfWeek([])
+    setRecurrenceDaysOfMonth(preset.daysOfMonth ? [...preset.daysOfMonth] : [])
     setRecurrenceEndType("never")
     setRecurrenceEndDate("")
     setRecurrenceEndOccurrences("")
@@ -131,6 +147,12 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
 
   const toggleDayOfWeek = (day: number) => {
     setRecurrenceDaysOfWeek(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b)
+    )
+  }
+
+  const toggleDayOfMonth = (day: number) => {
+    setRecurrenceDaysOfMonth(prev =>
       prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b)
     )
   }
@@ -156,6 +178,7 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
         recurrence_interval: recurrenceInterval,
         recurrence_unit: recurrenceUnit,
         recurrence_days_of_week: recurrenceDaysOfWeek.length > 0 ? recurrenceDaysOfWeek : undefined,
+        recurrence_days_of_month: recurrenceDaysOfMonth.length > 0 ? recurrenceDaysOfMonth : undefined,
         recurrence_end_type: recurrenceEndType,
         recurrence_end_date: recurrenceEndType === "on_date" ? recurrenceEndDate || null : null,
         recurrence_end_occurrences: recurrenceEndType === "after_occurrences" ? Number(recurrenceEndOccurrences) || null : null,
@@ -369,7 +392,12 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
                   />
                   <select
                     value={recurrenceUnit}
-                    onChange={(e) => setRecurrenceUnit(e.target.value as RecurrenceUnit)}
+                    onChange={(e) => {
+                      const newUnit = e.target.value as RecurrenceUnit
+                      setRecurrenceUnit(newUnit)
+                      if (newUnit !== "week") setRecurrenceDaysOfWeek([])
+                      if (newUnit !== "month") setRecurrenceDaysOfMonth([])
+                    }}
                     className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground"
                   >
                     <option value="day">days</option>
@@ -396,6 +424,29 @@ export function BillModal({ open, onClose, bill }: BillModalProps) {
                           }`}
                         >
                           {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Day-of-month toggles (only for months) */}
+                {recurrenceUnit === "month" && (
+                  <div className="space-y-1.5">
+                    <span className="text-sm text-muted-foreground">On days</span>
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleDayOfMonth(day)}
+                          className={`h-8 w-8 rounded-full text-xs font-medium transition-colors ${
+                            recurrenceDaysOfMonth.includes(day)
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          }`}
+                        >
+                          {day}
                         </button>
                       ))}
                     </div>

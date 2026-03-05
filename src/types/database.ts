@@ -47,6 +47,7 @@ export interface IncomeSource {
   recurrence_interval?: number
   recurrence_unit?: RecurrenceUnit
   recurrence_days_of_week?: number[]
+  recurrence_days_of_month?: number[]
   recurrence_end_type?: RecurrenceEndType
   recurrence_end_date?: string | null
   recurrence_end_occurrences?: number | null
@@ -74,6 +75,7 @@ export interface Bill {
   recurrence_interval?: number
   recurrence_unit?: RecurrenceUnit
   recurrence_days_of_week?: number[]
+  recurrence_days_of_month?: number[]
   recurrence_end_type?: RecurrenceEndType
   recurrence_end_date?: string | null
   recurrence_end_occurrences?: number | null
@@ -197,6 +199,7 @@ export interface Database {
           recurrence_interval?: number
           recurrence_unit?: string
           recurrence_days_of_week?: number[]
+          recurrence_days_of_month?: number[]
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null
@@ -213,6 +216,7 @@ export interface Database {
           recurrence_interval?: number
           recurrence_unit?: string
           recurrence_days_of_week?: number[]
+          recurrence_days_of_month?: number[]
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null
@@ -253,6 +257,7 @@ export interface Database {
           recurrence_interval?: number
           recurrence_unit?: string
           recurrence_days_of_week?: number[]
+          recurrence_days_of_month?: number[]
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null
@@ -269,6 +274,7 @@ export interface Database {
           recurrence_interval?: number
           recurrence_unit?: string
           recurrence_days_of_week?: number[]
+          recurrence_days_of_month?: number[]
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null

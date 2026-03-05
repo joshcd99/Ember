@@ -1,4 +1,4 @@
-import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay } from "date-fns"
+import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, getDaysInMonth } from "date-fns"
 import type { Bill, IncomeSource, RecurrenceUnit } from "@/types/database"
 
 const MAX_ITERATIONS = 500
@@ -9,6 +9,7 @@ export type Recurrent = (Bill | IncomeSource) & {
   recurrence_interval?: number
   recurrence_unit?: RecurrenceUnit
   recurrence_days_of_week?: number[]
+  recurrence_days_of_month?: number[]
   recurrence_end_type?: string
   recurrence_end_date?: string | null
   recurrence_end_occurrences?: number | null
@@ -24,6 +25,7 @@ interface NormalizedRecurrence {
   interval: number
   unit: RecurrenceUnit
   daysOfWeek: number[] | undefined
+  daysOfMonth: number[] | undefined
   endType: "never" | "on_date" | "after_occurrences"
   endDate: string | null
   endOccurrences: number | null
@@ -35,6 +37,7 @@ export function normalizeRecurrence(item: Recurrent): NormalizedRecurrence {
       interval: item.recurrence_interval ?? 1,
       unit: item.recurrence_unit,
       daysOfWeek: item.recurrence_days_of_week,
+      daysOfMonth: item.recurrence_days_of_month,
       endType: (item.recurrence_end_type as NormalizedRecurrence["endType"]) ?? "never",
       endDate: item.recurrence_end_date ?? null,
       endOccurrences: item.recurrence_end_occurrences ?? null,
@@ -43,13 +46,23 @@ export function normalizeRecurrence(item: Recurrent): NormalizedRecurrence {
   // Map legacy frequency
   switch (item.frequency) {
     case "weekly":
-      return { interval: 1, unit: "week", daysOfWeek: undefined, endType: "never", endDate: null, endOccurrences: null }
+      return { interval: 1, unit: "week", daysOfWeek: undefined, daysOfMonth: undefined, endType: "never", endDate: null, endOccurrences: null }
     case "biweekly":
-      return { interval: 2, unit: "week", daysOfWeek: undefined, endType: "never", endDate: null, endOccurrences: null }
+      return { interval: 2, unit: "week", daysOfWeek: undefined, daysOfMonth: undefined, endType: "never", endDate: null, endOccurrences: null }
     case "monthly":
     default:
-      return { interval: 1, unit: "month", daysOfWeek: undefined, endType: "never", endDate: null, endOccurrences: null }
+      return { interval: 1, unit: "month", daysOfWeek: undefined, daysOfMonth: undefined, endType: "never", endDate: null, endOccurrences: null }
   }
+}
+
+/** Get all dates for specific days-of-month within a given month, clamping to month length */
+function getDaysOfMonthDates(year: number, month: number, days: number[]): Date[] {
+  const maxDay = getDaysInMonth(new Date(year, month))
+  return days
+    .map(d => Math.min(d, maxDay))
+    .filter((d, i, arr) => arr.indexOf(d) === i) // dedupe after clamping
+    .sort((a, b) => a - b)
+    .map(d => new Date(year, month, d))
 }
 
 function stepDate(date: Date, interval: number, unit: RecurrenceUnit): Date {
@@ -74,8 +87,33 @@ function isPastEnd(rec: NormalizedRecurrence, date: Date, occurrenceCount: numbe
 
 export function getNextDueDate(item: Recurrent, fromDate: Date): Date | null {
   const rec = normalizeRecurrence(item)
-  let current = startOfDay(parseAnchorDate(item))
   const from = startOfDay(fromDate)
+
+  // Days-of-month mode: iterate month-by-month and check each specified day
+  if (rec.daysOfMonth?.length && rec.unit === "month") {
+    const anchor = startOfDay(parseAnchorDate(item))
+    let year = anchor.getFullYear()
+    let month = anchor.getMonth()
+    let iterations = 0
+    let occurrenceCount = 0
+
+    while (iterations < MAX_ITERATIONS) {
+      const dates = getDaysOfMonthDates(year, month, rec.daysOfMonth)
+      for (const d of dates) {
+        if (isPastEnd(rec, d, occurrenceCount)) return null
+        if (!isBefore(d, from)) return d
+        occurrenceCount++
+      }
+      // Step by interval months
+      const next = addMonths(new Date(year, month, 1), rec.interval)
+      year = next.getFullYear()
+      month = next.getMonth()
+      iterations++
+    }
+    return null
+  }
+
+  let current = startOfDay(parseAnchorDate(item))
   let iterations = 0
   let occurrenceCount = 0
 
@@ -96,9 +134,51 @@ export function getNextDueDate(item: Recurrent, fromDate: Date): Date | null {
 export function getOccurrencesInRange(item: Recurrent, start: Date, end: Date): Date[] {
   const rec = normalizeRecurrence(item)
   const results: Date[] = []
-  let current = startOfDay(parseAnchorDate(item))
   const rangeStart = startOfDay(start)
   const rangeEnd = startOfDay(end)
+
+  // Days-of-month mode: iterate month-by-month
+  if (rec.daysOfMonth?.length && rec.unit === "month") {
+    const anchor = startOfDay(parseAnchorDate(item))
+    let year = anchor.getFullYear()
+    let month = anchor.getMonth()
+    let iterations = 0
+    let occurrenceCount = 0
+
+    // Advance to the range
+    while (iterations < MAX_ITERATIONS) {
+      const dates = getDaysOfMonthDates(year, month, rec.daysOfMonth)
+      const lastDate = dates[dates.length - 1]
+      if (!lastDate || !isBefore(lastDate, rangeStart)) break
+      occurrenceCount += dates.filter(d => isBefore(d, rangeStart)).length
+      const next = addMonths(new Date(year, month, 1), rec.interval)
+      year = next.getFullYear()
+      month = next.getMonth()
+      iterations++
+    }
+
+    // Collect within range
+    while (iterations < MAX_ITERATIONS) {
+      const dates = getDaysOfMonthDates(year, month, rec.daysOfMonth)
+      let allPastRange = true
+      for (const d of dates) {
+        if (isPastEnd(rec, d, occurrenceCount)) return results
+        if (!isBefore(d, rangeEnd)) { allPastRange = true; break }
+        allPastRange = false
+        if (!isBefore(d, rangeStart)) results.push(d)
+        occurrenceCount++
+      }
+      if (allPastRange && dates.length > 0 && !isBefore(dates[0], rangeEnd)) break
+      const next = addMonths(new Date(year, month, 1), rec.interval)
+      year = next.getFullYear()
+      month = next.getMonth()
+      iterations++
+    }
+
+    return results
+  }
+
+  let current = startOfDay(parseAnchorDate(item))
   let iterations = 0
   let occurrenceCount = 0
 
@@ -128,7 +208,11 @@ export function recurrenceToMonthlyMultiplier(item: Recurrent): number {
   switch (rec.unit) {
     case "day": return 365 / rec.interval / 12
     case "week": return 52 / rec.interval / 12
-    case "month": return 1 / rec.interval
+    case "month": {
+      const base = 1 / rec.interval
+      // Multiply by number of days-of-month if set (e.g., 1st+15th = 2x per month)
+      return rec.daysOfMonth?.length ? base * rec.daysOfMonth.length : base
+    }
     case "year": return 1 / (12 * rec.interval)
   }
 }
@@ -147,6 +231,12 @@ export function formatRecurrence(item: Recurrent): string {
   const { recurrence_interval: interval = 1, recurrence_unit: unit } = item
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
+  const ordinal = (n: number) => {
+    const s = ["th", "st", "nd", "rd"]
+    const v = n % 100
+    return n + (s[(v - 20) % 10] || s[v] || s[0])
+  }
+
   let base: string
   if (unit === "week" && interval === 1 && item.recurrence_days_of_week?.length) {
     const days = item.recurrence_days_of_week.sort((a, b) => a - b).map(d => dayNames[d])
@@ -155,6 +245,9 @@ export function formatRecurrence(item: Recurrent): string {
     base = "Weekly"
   } else if (unit === "week" && interval === 2) {
     base = "Every 2 weeks"
+  } else if (unit === "month" && item.recurrence_days_of_month?.length) {
+    const dayStr = item.recurrence_days_of_month.sort((a, b) => a - b).map(d => ordinal(d)).join(", ")
+    base = interval === 1 ? `Monthly on ${dayStr}` : `Every ${interval} months on ${dayStr}`
   } else if (unit === "month" && interval === 1) {
     base = "Monthly"
   } else if (unit === "month" && interval === 3) {

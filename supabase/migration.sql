@@ -33,6 +33,7 @@ create table public.income_sources (
   recurrence_interval integer,
   recurrence_unit text,
   recurrence_days_of_week integer[],
+  recurrence_days_of_month integer[],
   recurrence_end_type text,
   recurrence_end_date date,
   recurrence_end_occurrences integer
@@ -45,7 +46,15 @@ create table public.bills (
   amount numeric(10,2) not null,
   frequency text not null check (frequency in ('weekly', 'biweekly', 'monthly')),
   next_due_date date not null,
-  category text not null default 'other'
+  category text not null default 'other',
+  recurrence_type text,
+  recurrence_interval integer,
+  recurrence_unit text,
+  recurrence_days_of_week integer[],
+  recurrence_days_of_month integer[],
+  recurrence_end_type text,
+  recurrence_end_date date,
+  recurrence_end_occurrences integer
 );
 
 create table public.transactions (
