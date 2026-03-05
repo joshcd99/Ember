@@ -92,7 +92,8 @@ export function useData(): AppData {
       return
     }
 
-    setState(s => ({ ...s, loading: true }))
+    // Only show loading spinner on initial load, not background refetches
+    setState(s => s.loading ? s : ({ ...s, loading: s.debts.length === 0 && s.incomeSources.length === 0 && s.bills.length === 0 }))
 
     const [debtsRes, incomeRes, billsRes, categoriesRes, settingsRes, txRes, checkinsRes, savingsRes] = await Promise.all([
       supabase.from("debts").select("*").order("created_at", { ascending: true }),

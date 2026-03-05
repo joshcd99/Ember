@@ -32,8 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
+      // Only update user/session if the user actually changed (avoids re-renders on token refresh)
+      setSession(prev => prev?.access_token === session?.access_token ? prev : session)
+      setUser(prev => prev?.id === session?.user?.id ? prev : (session?.user ?? null))
       setLoading(false)
     })
 
