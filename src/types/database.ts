@@ -22,6 +22,8 @@ export interface HouseholdMember {
   joined_at: string | null
 }
 
+export type PromoType = "deferred_interest" | "true_zero"
+
 export interface Debt {
   id: string
   household_id: string
@@ -34,6 +36,14 @@ export interface Debt {
   due_day: number
   created_at: string
   last_verified_at: string | null
+  // Promotional balance fields
+  promo_type?: PromoType | null
+  promo_apr?: number | null
+  promo_end_date?: string | null
+  promo_balance?: number | null
+  regular_apr?: number | null
+  // Per-debt actual payment
+  actual_payment?: number | null
 }
 
 export interface IncomeSource {
@@ -178,6 +188,12 @@ export interface Database {
           due_day: number
           created_at?: string
           last_verified_at?: string | null
+          promo_type?: string | null
+          promo_apr?: number | null
+          promo_end_date?: string | null
+          promo_balance?: number | null
+          regular_apr?: number | null
+          actual_payment?: number | null
         }
         Update: {
           id?: string
@@ -191,6 +207,12 @@ export interface Database {
           due_day?: number
           created_at?: string
           last_verified_at?: string | null
+          promo_type?: string | null
+          promo_apr?: number | null
+          promo_end_date?: string | null
+          promo_balance?: number | null
+          regular_apr?: number | null
+          actual_payment?: number | null
         }
         Relationships: []
       }

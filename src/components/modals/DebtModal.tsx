@@ -18,10 +18,10 @@ import {
   ResponsiveContainer,
 } from "recharts"
 import { useAppData } from "@/contexts/DataContext"
-import type { Debt, DebtType } from "@/types/database"
+import type { Debt, DebtType, PromoType } from "@/types/database"
 import { DEBT_TYPE_META } from "@/lib/debt-types"
-import { formatCurrency } from "@/lib/utils"
-import { Trash2 } from "lucide-react"
+import { formatCurrency, cn } from "@/lib/utils"
+import { Trash2, ChevronDown, AlertTriangle, Info } from "lucide-react"
 
 interface DebtModalProps {
   open: boolean
@@ -40,6 +40,13 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
   const [minimumPayment, setMinimumPayment] = useState("")
   const [dueDay, setDueDay] = useState("")
   const [debtType, setDebtType] = useState<DebtType>("other")
+  const [actualPayment, setActualPayment] = useState("")
+  const [promoExpanded, setPromoExpanded] = useState(false)
+  const [promoType, setPromoType] = useState<PromoType>("deferred_interest")
+  const [promoApr, setPromoApr] = useState("0")
+  const [promoEndDate, setPromoEndDate] = useState("")
+  const [promoBalance, setPromoBalance] = useState("")
+  const [regularApr, setRegularApr] = useState("")
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -52,6 +59,15 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setInterestRate(String((debt.interest_rate * 100).toFixed(2)))
       setMinimumPayment(String(debt.minimum_payment))
       setDueDay(String(debt.due_day))
+      setActualPayment(debt.actual_payment != null ? String(debt.actual_payment) : "")
+      // Promo fields
+      const hasPromo = !!debt.promo_type
+      setPromoExpanded(hasPromo)
+      setPromoType(debt.promo_type ?? "deferred_interest")
+      setPromoApr(debt.promo_apr != null ? String((debt.promo_apr * 100).toFixed(2)) : "0")
+      setPromoEndDate(debt.promo_end_date ?? "")
+      setPromoBalance(debt.promo_balance != null ? String(debt.promo_balance) : "")
+      setRegularApr(debt.regular_apr != null ? String((debt.regular_apr * 100).toFixed(2)) : "")
     } else {
       setName("")
       setDebtType("other")
@@ -60,6 +76,13 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setInterestRate("")
       setMinimumPayment("")
       setDueDay("")
+      setActualPayment("")
+      setPromoExpanded(false)
+      setPromoType("deferred_interest")
+      setPromoApr("0")
+      setPromoEndDate("")
+      setPromoBalance("")
+      setRegularApr("")
     }
     setConfirmDelete(false)
   }, [debt, open])
@@ -75,6 +98,12 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
         interest_rate: Number(interestRate) / 100,
         minimum_payment: Number(minimumPayment),
         due_day: Number(dueDay),
+        actual_payment: actualPayment ? Number(actualPayment) : null,
+        promo_type: promoExpanded ? promoType : null,
+        promo_apr: promoExpanded ? Number(promoApr) / 100 : null,
+        promo_end_date: promoExpanded && promoEndDate ? promoEndDate : null,
+        promo_balance: promoExpanded && promoBalance ? Number(promoBalance) : null,
+        regular_apr: promoExpanded && regularApr ? Number(regularApr) / 100 : null,
       }
       if (isEdit) {
         await updateDebt(debt.id, data)
@@ -194,6 +223,117 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
               onChange={setDueDay}
               hint="1–31"
             />
+          </div>
+
+          {/* Actually paying field */}
+          <Field
+            label="Actually Paying"
+            type="number"
+            prefix="$"
+            placeholder="Leave blank to use minimum"
+            value={actualPayment}
+            onChange={setActualPayment}
+            hint="What you're actually paying monthly on this debt"
+          />
+
+          {/* Promotional balance section */}
+          <div className="border border-border rounded-lg">
+            <button
+              type="button"
+              onClick={() => setPromoExpanded(!promoExpanded)}
+              className="flex items-center justify-between w-full px-3 py-2.5 text-sm text-left hover:bg-muted/50 rounded-lg transition-colors"
+            >
+              <span className={promoExpanded ? "font-medium" : "text-muted-foreground"}>
+                {promoExpanded ? "Promotional Balance" : "+ This debt has a promotional rate"}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", promoExpanded && "rotate-180")} />
+            </button>
+
+            {promoExpanded && (
+              <div className="px-3 pb-3 space-y-3 border-t border-border pt-3">
+                {/* Promo type selector */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Promo Type</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPromoType("deferred_interest")}
+                      className={cn(
+                        "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                        promoType === "deferred_interest"
+                          ? "border-warning bg-warning/10 text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:border-warning/50"
+                      )}
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
+                      <div>
+                        <div className="font-medium">Deferred Interest</div>
+                        <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                          Interest accumulates silently. Most store cards &amp; BNPL.
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromoType("true_zero")}
+                      className={cn(
+                        "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                        promoType === "true_zero"
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                      )}
+                    >
+                      <Info className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                      <div>
+                        <div className="font-medium">True 0%</div>
+                        <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                          No hidden interest. Most balance transfer cards.
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="Promo Rate"
+                    type="number"
+                    suffix="%"
+                    placeholder="0"
+                    value={promoApr}
+                    onChange={setPromoApr}
+                  />
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Promo End Date</label>
+                    <Input
+                      type="month"
+                      value={promoEndDate ? promoEndDate.slice(0, 7) : ""}
+                      onChange={(e) => setPromoEndDate(e.target.value ? e.target.value + "-01" : "")}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="Promo Balance"
+                    type="number"
+                    prefix="$"
+                    placeholder={currentBalance || "0"}
+                    value={promoBalance}
+                    onChange={setPromoBalance}
+                    hint="Defaults to current balance"
+                  />
+                  <Field
+                    label="Regular APR (post-promo)"
+                    type="number"
+                    suffix="%"
+                    placeholder={interestRate || "0"}
+                    value={regularApr}
+                    onChange={setRegularApr}
+                    hint="Rate after promo ends"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

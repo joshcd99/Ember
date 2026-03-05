@@ -12,6 +12,7 @@ import {
   Receipt,
   SlidersHorizontal,
   CreditCard,
+  AlertTriangle,
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useAppData } from "@/contexts/DataContext"
@@ -26,6 +27,12 @@ import {
 import { calculatePayoff, getHighestImpactAction, type Strategy } from "@/lib/payoff-engine"
 import { formatCurrency, formatDate, formatCountdown } from "@/lib/utils"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
+import {
+  hasActivePromo,
+  willMakeDeadline,
+  interestAtRisk,
+  extraNeededToMakeDeadline,
+} from "@/lib/promo-engine"
 import type { DebtType } from "@/types/database"
 import { differenceInDays } from "date-fns"
 import { addDays } from "date-fns"
@@ -158,6 +165,71 @@ export function Dashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Promo deadline warning */}
+      {(() => {
+        const atRiskPromos = debts
+          .filter(d => hasActivePromo(d) && !willMakeDeadline(d) && d.promo_type === "deferred_interest")
+          .sort((a, b) => (a.promo_end_date ?? "").localeCompare(b.promo_end_date ?? ""))
+
+        if (atRiskPromos.length === 0) return null
+
+        if (atRiskPromos.length === 1) {
+          const d = atRiskPromos[0]
+          const risk = interestAtRisk(d)
+          const extraNeeded = extraNeededToMakeDeadline(d)
+          const endLabel = d.promo_end_date
+            ? new Date(d.promo_end_date).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+            : ""
+          return (
+            <Card className="border-warning/30 bg-warning/5">
+              <CardContent className="flex items-center gap-4">
+                <div className="flex-shrink-0 h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center">
+                  <AlertTriangle className="h-6 w-6 text-warning" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-warning">Promo deadline at risk</p>
+                  <p className="text-sm text-foreground">
+                    {d.name} — {formatCurrency(risk)} in deferred interest dumps on {endLabel}
+                  </p>
+                  {extraNeeded > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      +{formatCurrency(extraNeeded)}/mo would clear it in time.
+                    </p>
+                  )}
+                </div>
+                <Link to="/debts">
+                  <Button variant="outline" size="sm">
+                    View debt <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )
+        }
+
+        // Multiple at-risk promos
+        return (
+          <Card className="border-warning/30 bg-warning/5">
+            <CardContent className="flex items-center gap-4">
+              <div className="flex-shrink-0 h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center">
+                <AlertTriangle className="h-6 w-6 text-warning" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-warning">Promo deadlines at risk</p>
+                <p className="text-sm text-foreground">
+                  {atRiskPromos.length} promotional balances at risk
+                </p>
+              </div>
+              <Link to="/debts">
+                <Button variant="outline" size="sm">
+                  View debts <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Stats grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

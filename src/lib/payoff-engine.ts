@@ -1,4 +1,5 @@
 import type { Debt, DebtType } from "@/types/database"
+import { hasActivePromo, willMakeDeadline, interestAtRisk } from "@/lib/promo-engine"
 
 export type Strategy = "avalanche" | "snowball" | "minimums" | "custom"
 
@@ -21,25 +22,55 @@ export interface PayoffResult {
   categoryPayoffMonths: Record<string, number>
 }
 
+/**
+ * Checks if a debt is an at-risk deferred interest promo that should be
+ * prioritized above normal strategy ordering.
+ */
+function isAtRiskDeferredPromo(d: Debt): boolean {
+  return hasActivePromo(d) && d.promo_type === "deferred_interest" && !willMakeDeadline(d)
+}
+
 export function sortDebts(debts: Debt[], strategy: Strategy, customOrder?: string[]): Debt[] {
   const sorted = [...debts]
+
+  // Base sort per strategy
+  let strategySorted: Debt[]
   switch (strategy) {
     case "avalanche":
-      return sorted.sort((a, b) => b.interest_rate - a.interest_rate)
+      strategySorted = sorted.sort((a, b) => b.interest_rate - a.interest_rate)
+      break
     case "snowball":
-      return sorted.sort((a, b) => a.current_balance - b.current_balance)
+      strategySorted = sorted.sort((a, b) => a.current_balance - b.current_balance)
+      break
     case "custom":
       if (customOrder && customOrder.length > 0) {
-        return sorted.sort((a, b) => {
+        strategySorted = sorted.sort((a, b) => {
           const ai = customOrder.indexOf(a.id)
           const bi = customOrder.indexOf(b.id)
           return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
         })
+      } else {
+        strategySorted = sorted
       }
-      return sorted
+      break
     case "minimums":
-      return sorted
+      strategySorted = sorted
+      break
   }
+
+  // Float at-risk deferred interest promos to the top, ranked by interestAtRisk desc
+  const atRisk = strategySorted.filter(isAtRiskDeferredPromo)
+    .sort((a, b) => interestAtRisk(b) - interestAtRisk(a))
+  const rest = strategySorted.filter(d => !isAtRiskDeferredPromo(d))
+
+  return [...atRisk, ...rest]
+}
+
+/** Returns names of debts prioritized due to promo deadline urgency */
+export function getPromoPrioritizedDebts(debts: Debt[]): string[] {
+  return debts
+    .filter(isAtRiskDeferredPromo)
+    .map(d => d.name)
 }
 
 export function calculatePayoff(

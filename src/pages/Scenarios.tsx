@@ -17,7 +17,13 @@ import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/moc
 import { calculatePayoff } from "@/lib/payoff-engine"
 import { projectSavings } from "@/lib/savings-engine"
 import { formatCurrency, cn } from "@/lib/utils"
-import { SlidersHorizontal, RotateCcw } from "lucide-react"
+import {
+  hasActivePromo,
+  willMakeDeadline,
+  extraNeededToMakeDeadline,
+  interestAtRisk,
+} from "@/lib/promo-engine"
+import { SlidersHorizontal, RotateCcw, Lightbulb } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 // --- Constants ---
@@ -441,6 +447,28 @@ export function Scenarios() {
                     />
                   </div>
                 </div>
+
+                {/* Promo deadline callout */}
+                {debts
+                  .filter(d => hasActivePromo(d) && d.promo_type === "deferred_interest" && !willMakeDeadline(d))
+                  .map(d => {
+                    const needed = extraNeededToMakeDeadline(d)
+                    const risk = interestAtRisk(d)
+                    const endLabel = d.promo_end_date
+                      ? new Date(d.promo_end_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                      : ""
+                    if (scenarioExtra < needed) return null
+                    return (
+                      <div key={d.id} className="flex items-start gap-2 mt-2 text-xs text-success bg-success/5 border border-success/20 rounded-lg p-2.5">
+                        <Lightbulb className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                        <span>
+                          +{formatCurrency(needed)}/mo clears the {d.name} promo before {endLabel}.
+                          Saves {formatCurrency(risk)} in deferred interest.
+                        </span>
+                      </div>
+                    )
+                  })
+                }
               </div>
             )}
 

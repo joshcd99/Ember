@@ -1,12 +1,13 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/EmptyState"
 import { DebtModal } from "@/components/modals/DebtModal"
+import { PayoffCelebrationModal } from "@/components/modals/PayoffCelebrationModal"
 import { Input } from "@/components/ui/input"
-import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame, Download, ArrowUpDown } from "lucide-react"
+import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame, Download, ArrowUpDown, AlertTriangle, Clock } from "lucide-react"
 import {
   LineChart,
   Line,
@@ -35,10 +36,20 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
-import { calculatePayoff, sortDebts, type Strategy } from "@/lib/payoff-engine"
+import { calculatePayoff, sortDebts, getPromoPrioritizedDebts, type Strategy } from "@/lib/payoff-engine"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
 import { downloadCSV } from "@/lib/csv"
+import {
+  hasActivePromo,
+  willMakeDeadline,
+  extraNeededToMakeDeadline,
+  interestAtRisk,
+  monthsUntilPromoEnd,
+  projectedBalanceAtPromoEnd,
+  deadlineBuffer,
+  calculateDeferredInterest,
+} from "@/lib/promo-engine"
 import type { Debt, DebtType, ExtraPaymentType } from "@/types/database"
 
 /** 3-tier APR badge: >15% red, 7-15% neutral, <7% green */
@@ -121,6 +132,34 @@ export function Debts() {
   const [justSaved, setJustSaved] = useState(false)
   const [tableOpen, setTableOpen] = useState(false)
   const [debtSort, setDebtSort] = useState<"category" | "name" | "balance" | "progress" | "rate">("category")
+  const [celebratingDebt, setCelebratingDebt] = useState<Debt | null>(null)
+  const prevDebtsRef = useRef<Debt[]>([])
+
+  // Detect when a debt goes from positive balance to zero (payoff celebration)
+  useEffect(() => {
+    if (prevDebtsRef.current.length > 0) {
+      for (const prev of prevDebtsRef.current) {
+        if (prev.current_balance > 0.01) {
+          const current = debts.find(d => d.id === prev.id)
+          if (current && current.current_balance <= 0.01) {
+            setCelebratingDebt(current)
+            break
+          }
+          // Check if promo balance was cleared before deadline
+          if (
+            current &&
+            prev.promo_balance != null && prev.promo_balance > 0.01 &&
+            current.promo_balance != null && current.promo_balance <= 0.01 &&
+            current.promo_end_date && new Date(current.promo_end_date) > new Date()
+          ) {
+            setCelebratingDebt(current)
+            break
+          }
+        }
+      }
+    }
+    prevDebtsRef.current = debts
+  }, [debts])
 
   // Initialize from saved settings
   const savedStrategy = (householdSettings?.preferred_strategy ?? "avalanche") as DisplayStrategy
@@ -289,6 +328,43 @@ export function Debts() {
     const paid = debt.starting_balance - debt.current_balance
     const pct = debt.starting_balance > 0 ? (paid / debt.starting_balance) * 100 : 0
     const type = debt.debt_type ?? "other"
+    const isPromo = hasActivePromo(debt)
+    const payingExtra = debt.actual_payment != null && debt.actual_payment > debt.minimum_payment
+    const extraAmt = payingExtra ? debt.actual_payment! - debt.minimum_payment : 0
+
+    // Quick interest savings estimate for extra payments
+    let interestSavedEstimate = 0
+    if (payingExtra && debt.interest_rate > 0) {
+      const minResult = calculatePayoff([debt], "minimums")
+      const extraResult = calculatePayoff(
+        [{ ...debt, minimum_payment: debt.actual_payment! }],
+        "minimums"
+      )
+      interestSavedEstimate = Math.max(0, minResult.totalInterest - extraResult.totalInterest)
+    }
+
+    // Promo-specific calculations
+    const promoMonthsLeft = isPromo ? monthsUntilPromoEnd(debt) : 0
+    const promoOnTrack = isPromo ? willMakeDeadline(debt) : true
+    const promoExtraNeeded = isPromo ? extraNeededToMakeDeadline(debt) : 0
+    const promoRisk = isPromo ? interestAtRisk(debt) : 0
+    const promoProjected = isPromo ? projectedBalanceAtPromoEnd(debt) : 0
+    const promoBuffer = isPromo ? deadlineBuffer(debt) : Infinity
+    const promoPaid = isPromo && debt.promo_balance
+      ? debt.starting_balance - debt.promo_balance
+      : 0
+    const promoPct = isPromo && debt.promo_balance && debt.starting_balance > 0
+      ? ((debt.starting_balance - debt.promo_balance) / debt.starting_balance) * 100
+      : 0
+    const deferredAmt = isPromo ? calculateDeferredInterest(debt) : 0
+
+    // Progress bar color for promo
+    const promoProgressColor = promoBuffer > 2 ? "bg-success" : promoBuffer >= 0 ? "bg-warning" : "bg-destructive"
+
+    const promoEndLabel = debt.promo_end_date
+      ? new Date(debt.promo_end_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+      : ""
+
     return (
       <Card
         key={debt.id}
@@ -311,8 +387,8 @@ export function Debts() {
                   {DEBT_TYPE_META[type].label}
                 </span>
               )}
-              <Badge variant={aprBadgeVariant(debt.interest_rate)}>
-                {formatPercent(debt.interest_rate)} APR
+              <Badge variant={aprBadgeVariant(debt.regular_apr ?? debt.interest_rate)}>
+                {formatPercent(debt.regular_apr ?? debt.interest_rate)} APR
               </Badge>
               <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -328,6 +404,94 @@ export function Debts() {
             <span>{formatCurrency(paid)} paid</span>
             <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
           </div>
+
+          {/* Payment detail row */}
+          {payingExtra && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground pt-1 border-t border-border">
+              <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
+              <span>&middot;</span>
+              <span>Paying: {formatCurrencyExact(debt.actual_payment!)}/mo</span>
+              <span>&middot;</span>
+              <span className="text-success font-medium">+{formatCurrency(extraAmt)} extra</span>
+              {interestSavedEstimate > 0 && (
+                <>
+                  <span>&middot;</span>
+                  <span className="text-success">saves ~{formatCurrency(interestSavedEstimate)} in interest</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Promo alert section */}
+          {isPromo && debt.promo_type === "deferred_interest" && (
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+                <span className="font-medium">0% promo ends {promoEndLabel}</span>
+                <span className="text-muted-foreground">&middot; {promoMonthsLeft} months</span>
+              </div>
+              {deferredAmt > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Deferred interest accumulating: <span className="font-medium text-warning">{formatCurrency(deferredAmt)}</span>
+                </p>
+              )}
+              <div className="space-y-1">
+                <div className={cn("h-1.5 rounded-full bg-muted overflow-hidden")}>
+                  <div
+                    className={cn("h-full rounded-full transition-all", promoProgressColor)}
+                    style={{ width: `${Math.min(100, promoPct)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  {formatCurrency(promoPaid)} of {formatCurrency(debt.starting_balance)} paid &middot; {promoPct.toFixed(0)}%
+                </p>
+              </div>
+              {promoOnTrack ? (
+                <p className="text-xs text-success flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5" />
+                  On track — deadline cleared by {promoBuffer} months
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-xs text-destructive flex items-center gap-1">
+                    ✗ No — {formatCurrency(promoRisk)} will dump on {promoEndLabel}
+                  </p>
+                  {promoExtraNeeded > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Extra needed: <span className="font-medium">+{formatCurrency(promoExtraNeeded)}/mo</span>
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isPromo && debt.promo_type === "true_zero" && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <Clock className="h-4 w-4 text-primary flex-shrink-0" />
+                <span className="font-medium">0% promo ends {promoEndLabel}</span>
+                <span className="text-muted-foreground">&middot; {promoMonthsLeft} months</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Remaining promo balance: <span className="font-medium">{formatCurrency(debt.promo_balance ?? 0)}</span>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                After deadline: {formatPercent(debt.regular_apr ?? 0)} APR applies to remaining balance
+              </p>
+              {!promoOnTrack && (
+                <p className="text-xs text-warning flex items-center gap-1">
+                  ✗ {formatCurrency(promoProjected)} remaining at deadline
+                </p>
+              )}
+              {promoOnTrack && (
+                <p className="text-xs text-success flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5" />
+                  On track to clear before deadline
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     )
@@ -588,6 +752,16 @@ export function Debts() {
             )
           })}
         </div>
+
+        {/* Promo urgency note */}
+        {getPromoPrioritizedDebts(debts).length > 0 && (
+          <div className="flex items-start gap-2 mt-3 text-xs text-warning bg-warning/5 border border-warning/20 rounded-lg p-3">
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+            <span>
+              Deferred interest deadline on {getPromoPrioritizedDebts(debts).join(", ")} — prioritized above rate order.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Custom order drag-and-drop */}
@@ -816,6 +990,12 @@ export function Debts() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         debt={editingDebt}
+      />
+
+      <PayoffCelebrationModal
+        open={!!celebratingDebt}
+        onClose={() => setCelebratingDebt(null)}
+        debt={celebratingDebt}
       />
     </div>
   )
