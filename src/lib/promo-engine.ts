@@ -30,18 +30,38 @@ function paymentPeriodsLeft(debt: Debt, asOf: Date = new Date()): number {
 }
 
 /**
- * For deferred_interest type: total interest that has accumulated silently
- * since debt creation. Uses day-level precision.
- * Formula: promo_balance * (interest_rate / 365) * daysElapsed
- * Uses interest_rate (the card's real APR) for deferred interest accumulation.
+ * Months elapsed since debt creation. Used for deferred interest accumulation.
+ */
+function monthsElapsed(debt: Debt, asOf: Date = new Date()): number {
+  if (!debt.created_at) return 0
+  const created = new Date(debt.created_at)
+  const days = Math.max(0, differenceInDays(asOf, created))
+  return days / 30.44
+}
+
+/**
+ * Total months in the promo period (from creation to promo end date).
+ */
+function totalPromoMonths(debt: Debt): number {
+  if (!debt.created_at || !debt.promo_end_date) return 0
+  const created = new Date(debt.created_at)
+  const end = new Date(debt.promo_end_date + "T00:00")
+  const days = Math.max(0, differenceInDays(end, created))
+  return days / 30.44
+}
+
+/**
+ * For deferred_interest type: interest that has accumulated silently so far.
+ * Formula: current_balance × (interest_rate / 12) × months_elapsed
+ * Interest accrues monthly at the regular APR against the current balance.
  */
 export function calculateDeferredInterest(debt: Debt, asOf: Date = new Date()): number {
   if (debt.promo_type !== "deferred_interest") return 0
-  if (!debt.promo_balance || !debt.interest_rate || !debt.created_at) return 0
+  if (!debt.current_balance || !debt.interest_rate || !debt.created_at) return 0
 
-  const created = new Date(debt.created_at)
-  const daysElapsed = Math.max(0, differenceInDays(asOf, created))
-  return debt.promo_balance * (debt.interest_rate / 365) * daysElapsed
+  const monthlyRate = debt.interest_rate / 12
+  const elapsed = monthsElapsed(debt, asOf)
+  return debt.current_balance * monthlyRate * elapsed
 }
 
 /**
@@ -115,18 +135,17 @@ export function extraNeededToMakeDeadline(debt: Debt): number {
 
 /**
  * For deferred_interest: total interest that will dump if deadline missed.
- * Uses day-level precision for the full promo period.
+ * Formula: current_balance × (interest_rate / 12) × total_promo_months
+ * This is the full amount from creation to promo_end_date.
  * For true_zero: 0 (no deferred interest).
  */
 export function interestAtRisk(debt: Debt): number {
   if (debt.promo_type !== "deferred_interest") return 0
-  if (!debt.promo_balance || !debt.interest_rate || !debt.promo_end_date) return 0
+  if (!debt.current_balance || !debt.interest_rate || !debt.promo_end_date) return 0
 
-  const created = new Date(debt.created_at)
-  const end = new Date(debt.promo_end_date + "T00:00")
-  const totalDays = Math.max(0, differenceInDays(end, created))
-
-  return debt.promo_balance * (debt.interest_rate / 365) * totalDays
+  const monthlyRate = debt.interest_rate / 12
+  const months = totalPromoMonths(debt)
+  return debt.current_balance * monthlyRate * months
 }
 
 /**

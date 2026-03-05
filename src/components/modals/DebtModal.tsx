@@ -249,10 +249,10 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
               const pApr = promoExpanded ? Number(promoApr) / 100 : rate
 
               if (isDeferred && pBal > 0) {
-                // Build a debt object from form values to use promo engine functions
+                // Build debt objects from form values for promo engine
                 const formDebt: Debt = {
                   id: "calc", household_id: "", name: "", debt_type: "other",
-                  current_balance: bal, starting_balance: bal,
+                  current_balance: bal, starting_balance: Number(startingBalance) || bal,
                   interest_rate: rate, minimum_payment: mp, due_day: 1,
                   created_at: new Date().toISOString(), last_verified_at: null,
                   promo_type: "deferred_interest",
@@ -263,8 +263,10 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
                 }
                 const minFormDebt: Debt = { ...formDebt, actual_payment: null }
 
-                // Minimum path: misses deadline → deferred interest dumps
-                const deferredDump = interestAtRisk(minFormDebt)
+                // Deferred interest at deadline = current_balance × monthly_rate × total_promo_months
+                const deferredDump = interestAtRisk(formDebt)
+
+                // Minimum path: misses deadline → dump + post-dump interest
                 const projBal = projectedBalanceAtPromoEnd(minFormDebt)
                 const postDumpBalance = projBal + deferredDump
                 if (postDumpBalance <= 0.01) return null
@@ -281,7 +283,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
                 const minResult = calculatePayoff([syntheticDebt], "minimums")
                 const minTotal = deferredDump + minResult.totalInterest
 
-                // Actual payment path
+                // Actual payment path: if beats deadline, total interest = $0
                 let actualTotal = 0
                 if (!willMakeDeadline(formDebt)) {
                   const actualProjBal = projectedBalanceAtPromoEnd(formDebt)
@@ -297,7 +299,6 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
                     actualTotal = deferredDump + actualResult.totalInterest
                   }
                 }
-                // If willMakeDeadline with actual payment, actualTotal = 0 (no dump)
 
                 const saved = Math.max(0, minTotal - actualTotal)
                 if (saved < 1) return null
