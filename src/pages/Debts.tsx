@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { EmptyState } from "@/components/EmptyState"
 import { DebtModal } from "@/components/modals/DebtModal"
-import { Check, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Check, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame } from "lucide-react"
 import {
   LineChart,
   Line,
@@ -37,7 +38,7 @@ import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
 import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
-import type { Debt } from "@/types/database"
+import type { Debt, ExtraPaymentType } from "@/types/database"
 
 /** 3-tier APR badge: >15% red, 7-15% neutral, <7% green */
 function aprBadgeVariant(rate: number): "destructive" | "default" | "success" {
@@ -110,10 +111,22 @@ function SortableDebtRow({ debt, index }: { debt: Debt; index: number }) {
 }
 
 export function Debts() {
-  const { debts, incomeSources, bills, householdSettings, updateCustomDebtOrder, loading } = useAppData()
-  const [selectedStrategy, setSelectedStrategy] = useState<DisplayStrategy>("avalanche")
+  const { debts, incomeSources, bills, householdSettings, updateCustomDebtOrder, updatePayoffStrategy, loading } = useAppData()
   const [modalOpen, setModalOpen] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [justSaved, setJustSaved] = useState(false)
+
+  // Initialize from saved settings
+  const savedStrategy = (householdSettings?.preferred_strategy ?? "avalanche") as DisplayStrategy
+  const savedExtraType = (householdSettings?.extra_payment_type ?? "fixed") as ExtraPaymentType
+  const savedExtraAmount = householdSettings?.extra_payment_amount ?? 0
+
+  const [selectedStrategy, setSelectedStrategy] = useState<DisplayStrategy>(savedStrategy)
+  const [extraType, setExtraType] = useState<"none" | ExtraPaymentType>(
+    savedExtraAmount === 0 && savedExtraType === "fixed" ? "none" : savedExtraType
+  )
+  const [extraAmount, setExtraAmount] = useState(String(savedExtraAmount || ""))
 
   const customOrder = householdSettings?.custom_debt_order ?? []
 
@@ -183,7 +196,31 @@ export function Debts() {
   const monthlyIncome = getMonthlyIncome(incomeSources)
   const monthlyBillsTotal = getMonthlyBills(bills)
   const monthlyMinimums = getMonthlyMinimums(debts)
-  const extraMonthly = Math.max(0, Math.floor((monthlyIncome - monthlyBillsTotal - monthlyMinimums) * 0.5))
+  const freeCash = Math.max(0, monthlyIncome - monthlyBillsTotal - monthlyMinimums)
+
+  const extraMonthly = extraType === "none"
+    ? 0
+    : extraType === "percent_of_free_cash"
+      ? Math.max(0, Math.floor(freeCash * (Number(extraAmount) || 0) / 100))
+      : Math.max(0, Number(extraAmount) || 0)
+
+  // Detect unsaved changes
+  const hasUnsavedChanges = selectedStrategy !== savedStrategy
+    || (extraType === "none" ? 0 : Number(extraAmount) || 0) !== savedExtraAmount
+    || (extraType === "none" ? "fixed" : extraType) !== savedExtraType
+
+  const handleApplyStrategy = async () => {
+    setSaving(true)
+    try {
+      const persistType: ExtraPaymentType = extraType === "none" ? "fixed" : extraType
+      const persistAmount = extraType === "none" ? 0 : (Number(extraAmount) || 0)
+      await updatePayoffStrategy(selectedStrategy, persistAmount, persistType)
+      setJustSaved(true)
+      setTimeout(() => setJustSaved(false), 2000)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const results = {
     avalanche: calculatePayoff(debts, "avalanche", extraMonthly),
@@ -269,16 +306,86 @@ export function Debts() {
 
       {/* Strategy comparison */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">Strategy Comparison</h2>
-        {incomeSources.length > 0 ? (
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Strategy Comparison</h2>
+          {hasUnsavedChanges && (
+            <Button onClick={handleApplyStrategy} disabled={saving} size="sm">
+              {saving ? "Saving..." : justSaved ? <><Check className="h-4 w-4" /> Applied</> : <><Flame className="h-4 w-4" /> Apply Strategy</>}
+            </Button>
+          )}
+          {!hasUnsavedChanges && savedStrategy && savedExtraAmount > 0 && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Check className="h-3.5 w-3.5 text-success" /> Strategy applied
+            </span>
+          )}
+        </div>
+
+        {/* Extra payment controls */}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <span className="text-sm text-muted-foreground">Extra payment:</span>
+          <div className="flex gap-2">
+            {(["none", "fixed", "percent_of_free_cash"] as const).map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  setExtraType(t)
+                  if (t === "none") setExtraAmount("")
+                  if (t === "percent_of_free_cash" && !extraAmount) setExtraAmount("50")
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-sm border transition-colors",
+                  extraType === t
+                    ? "border-primary bg-primary/15 text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                )}
+              >
+                {t === "none" ? "Minimums Only" : t === "fixed" ? "Fixed $" : "% of Free Cash"}
+              </button>
+            ))}
+          </div>
+          {extraType === "fixed" && (
+            <div className="relative w-28">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <Input
+                type="number"
+                placeholder="200"
+                value={extraAmount}
+                onChange={e => setExtraAmount(e.target.value)}
+                className="h-9 pl-7 text-sm"
+              />
+            </div>
+          )}
+          {extraType === "percent_of_free_cash" && (
+            <div className="flex items-center gap-2">
+              <div className="relative w-20">
+                <Input
+                  type="number"
+                  placeholder="50"
+                  value={extraAmount}
+                  onChange={e => setExtraAmount(e.target.value)}
+                  className="h-9 pr-7 text-sm"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+              </div>
+              {freeCash > 0 && (
+                <span className="text-xs text-muted-foreground">= {formatCurrency(extraMonthly)}/mo</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {extraMonthly > 0 && extraType === "fixed" && (
           <p className="text-sm text-muted-foreground mb-4">
             Throwing {formatCurrency(extraMonthly)}/mo of extra fuel at your debt.
           </p>
-        ) : (
+        )}
+        {extraType === "none" && (
           <p className="text-sm text-muted-foreground mb-4">
-            Add income and bills to see what happens when you add more fuel.
+            Showing projections with minimum payments only.
           </p>
         )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {(["avalanche", "snowball", "minimums", "custom"] as DisplayStrategy[]).map(strategy => {
             const result = results[strategy]

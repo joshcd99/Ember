@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS public.household_settings (
   custom_debt_order JSONB NOT NULL DEFAULT '[]',
   balance_upper_threshold NUMERIC NOT NULL DEFAULT 10000,
   balance_lower_threshold NUMERIC NOT NULL DEFAULT 2000,
+  preferred_strategy TEXT DEFAULT NULL,
+  extra_payment_amount NUMERIC NOT NULL DEFAULT 0,
+  extra_payment_type TEXT NOT NULL DEFAULT 'fixed',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -81,12 +81,17 @@ export interface Bill {
   recurrence_end_occurrences?: number | null
 }
 
+export type ExtraPaymentType = "fixed" | "percent_of_free_cash"
+
 export interface HouseholdSettings {
   id: string
   household_id: string
   custom_debt_order: string[]
   balance_upper_threshold: number
   balance_lower_threshold: number
+  preferred_strategy?: string
+  extra_payment_amount?: number
+  extra_payment_type?: ExtraPaymentType
   created_at: string
   updated_at: string
 }
@@ -315,6 +320,9 @@ export interface Database {
           id?: string
           household_id: string
           custom_debt_order?: string[]
+          preferred_strategy?: string
+          extra_payment_amount?: number
+          extra_payment_type?: string
           created_at?: string
           updated_at?: string
         }
@@ -322,6 +330,9 @@ export interface Database {
           id?: string
           household_id?: string
           custom_debt_order?: string[]
+          preferred_strategy?: string
+          extra_payment_amount?: number
+          extra_payment_type?: string
           created_at?: string
           updated_at?: string
         }

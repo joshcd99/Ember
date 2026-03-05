@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
-import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory, HouseholdSettings } from "@/types/database"
+import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, BillCategory, HouseholdSettings, ExtraPaymentType } from "@/types/database"
 import {
   mockDebts,
   mockIncomeSources,
@@ -45,6 +45,7 @@ interface DataActions {
   // Household Settings
   updateCustomDebtOrder: (order: string[]) => Promise<void>
   updateBalanceThresholds: (upper: number, lower: number) => Promise<void>
+  updatePayoffStrategy: (strategy: string, extraAmount: number, extraType: ExtraPaymentType) => Promise<void>
   // Transactions
   addTransaction: (tx: Omit<Transaction, "id" | "user_id" | "household_id">) => Promise<void>
   // Checkins
@@ -292,6 +293,24 @@ export function useData(): AppData {
     await fetchAll()
   }
 
+  const updatePayoffStrategy = async (strategy: string, extraAmount: number, extraType: ExtraPaymentType) => {
+    if (useMockMode) {
+      setState(s => ({
+        ...s,
+        householdSettings: s.householdSettings
+          ? { ...s.householdSettings, preferred_strategy: strategy, extra_payment_amount: extraAmount, extra_payment_type: extraType, updated_at: new Date().toISOString() }
+          : { id: mockId(), household_id: "mock-household", custom_debt_order: [], balance_upper_threshold: 10000, balance_lower_threshold: 2000, preferred_strategy: strategy, extra_payment_amount: extraAmount, extra_payment_type: extraType, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      }))
+      return
+    }
+    const { error } = await supabase.from("household_settings").upsert(
+      { household_id: householdId!, preferred_strategy: strategy, extra_payment_amount: extraAmount, extra_payment_type: extraType, updated_at: new Date().toISOString() },
+      { onConflict: "household_id" }
+    )
+    if (error) throw error
+    await fetchAll()
+  }
+
   // --- Bill Category CRUD ---
   const addBillCategory = async (category: Omit<BillCategory, "id" | "household_id" | "created_at">) => {
     if (useMockMode) {
@@ -400,6 +419,7 @@ export function useData(): AppData {
     deleteBill,
     updateCustomDebtOrder,
     updateBalanceThresholds,
+    updatePayoffStrategy,
     addBillCategory,
     updateBillCategory,
     deleteBillCategory,

@@ -13,9 +13,10 @@ interface DebtFreeCountdownProps {
   startingDebt: number
   progressPercent: number
   paidOff: number
+  strategyLabel?: string
 }
 
-export function DebtFreeCountdown({ debtFreeDate, months, totalDebt, startingDebt, progressPercent, paidOff }: DebtFreeCountdownProps) {
+export function DebtFreeCountdown({ debtFreeDate, months, totalDebt, startingDebt, progressPercent, paidOff, strategyLabel }: DebtFreeCountdownProps) {
   const [showCelebration, setShowCelebration] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const shareCardRef = useRef<HTMLDivElement>(null)
@@ -133,7 +134,7 @@ export function DebtFreeCountdown({ debtFreeDate, months, totalDebt, startingDeb
             <Progress value={progressPercent} className="mt-2" />
             <p className="text-xs text-muted-foreground">
               {formatCurrency(paidOff)} paid off ({progressPercent.toFixed(0)}%)
-              {months ? ` · ${months} months at current pace` : ""}
+              {strategyLabel ? ` · ${strategyLabel}` : months ? ` · ${months} months at current pace` : ""}
             </p>
           </>
         ) : (

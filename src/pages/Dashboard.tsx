@@ -23,13 +23,13 @@ import {
   getMonthlyMinimums,
   getCheckinStreak,
 } from "@/lib/mock-data"
-import { calculatePayoff, getHighestImpactAction } from "@/lib/payoff-engine"
+import { calculatePayoff, getHighestImpactAction, type Strategy } from "@/lib/payoff-engine"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { addDays } from "date-fns"
 import { getOccurrencesInRange } from "@/lib/recurrence"
 
 export function Dashboard() {
-  const { debts, bills, incomeSources, checkins, loading } = useAppData()
+  const { debts, bills, incomeSources, checkins, householdSettings, loading } = useAppData()
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading your data...</div>
@@ -48,10 +48,17 @@ export function Dashboard() {
   const monthlyMinimums = getMonthlyMinimums(debts)
   const cashFlow = monthlyIncome - monthlyBillsTotal - monthlyMinimums
 
-  const avalanche = hasDebts
-    ? calculatePayoff(debts, "avalanche", cashFlow > 0 ? Math.floor(cashFlow * 0.5) : 0)
+  const savedStrategy = (householdSettings?.preferred_strategy ?? "minimums") as Strategy
+  const savedExtraType = householdSettings?.extra_payment_type ?? "fixed"
+  const savedExtraAmount = householdSettings?.extra_payment_amount ?? 0
+  const extraMonthly = savedExtraType === "percent_of_free_cash"
+    ? Math.max(0, Math.floor(cashFlow * (savedExtraAmount / 100)))
+    : savedExtraAmount
+
+  const payoffResult = hasDebts
+    ? calculatePayoff(debts, savedStrategy, extraMonthly, null, householdSettings?.custom_debt_order)
     : null
-  const debtFreeDate = avalanche?.payoffDate
+  const debtFreeDate = payoffResult?.payoffDate
 
   const streak = getCheckinStreak(checkins)
   const impactAction = getHighestImpactAction(debts)
@@ -178,11 +185,16 @@ export function Dashboard() {
         {/* Debt-free countdown */}
         <DebtFreeCountdown
           debtFreeDate={debtFreeDate ?? null}
-          months={avalanche?.months ?? null}
+          months={payoffResult?.months ?? null}
           totalDebt={totalDebt}
           startingDebt={startingDebt}
           progressPercent={progressPercent}
           paidOff={paidOff}
+          strategyLabel={
+            savedStrategy === "minimums" && savedExtraAmount === 0
+              ? "Minimums only"
+              : `${savedStrategy.charAt(0).toUpperCase() + savedStrategy.slice(1)}${extraMonthly > 0 ? ` + ${formatCurrency(extraMonthly)}/mo extra` : ""}`
+          }
         />
 
         {/* Monthly cash flow */}
