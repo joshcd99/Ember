@@ -465,17 +465,21 @@ export function Debts() {
                   </div>
                   {result.debtPayoffOrder.length > 0 && (
                     <div className="pt-2 border-t border-border mt-2">
-                      <p className="text-xs text-muted-foreground mb-1">Payoff order:</p>
-                      <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground mb-2">Payoff order:</p>
+                      <div className="space-y-2">
                         {result.debtPayoffOrder.map((d, i) => {
                           const debt = debts.find(db => db.id === d.id)
-                          const detail = strategy === "snowball"
-                            ? debt ? formatCurrency(debt.current_balance) : ""
-                            : debt ? formatPercent(debt.interest_rate) : ""
+                          const payoffDate = new Date()
+                          payoffDate.setMonth(payoffDate.getMonth() + d.month)
+                          const dateLabel = payoffDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })
                           return (
-                            <p key={d.id} className="text-xs">
-                              {i + 1}. {d.name} ({detail}) — month {d.month}
-                            </p>
+                            <div key={d.id}>
+                              <p className="text-xs font-medium">{i + 1}. {d.name}</p>
+                              <p className="text-[10px] text-muted-foreground ml-3.5">
+                                {dateLabel}
+                                {debt && <> · {formatPercent(debt.interest_rate)} · {formatCurrency(debt.current_balance)}</>}
+                              </p>
+                            </div>
                           )
                         })}
                       </div>
