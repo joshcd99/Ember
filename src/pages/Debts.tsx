@@ -252,6 +252,12 @@ export function Debts() {
   }
 
   const step = Math.max(1, Math.floor(selectedResult.months / 40))
+  // Collect months that must appear in the chart (payoff milestones + final)
+  const mustInclude = new Set<number>([selectedResult.months])
+  for (const t of activeTypes) {
+    const m = selectedResult.categoryPayoffMonths[t]
+    if (m != null && m > 0) mustInclude.add(m)
+  }
   const stackedChartData: Array<Record<string, number | string>> = []
 
   for (let m = 0; m <= selectedResult.months; m += step) {
@@ -262,6 +268,15 @@ export function Debts() {
       row[t] = Math.round((snap.typeBalances[t] ?? 0) * 100) / 100
     }
     stackedChartData.push(row)
+    // Insert any must-include months that fall before the next step
+    for (const mi of mustInclude) {
+      if (mi > m && mi < m + step && selectedResult.timeline[mi]) {
+        const snap2 = selectedResult.timeline[mi]
+        const row2: Record<string, number | string> = { calendarMonth: offsetToCalMonth(mi) }
+        for (const t of activeTypes) row2[t] = Math.round((snap2.typeBalances[t] ?? 0) * 100) / 100
+        stackedChartData.push(row2)
+      }
+    }
   }
   // Ensure final month is included
   const lastSnap = selectedResult.timeline[selectedResult.months]
