@@ -537,7 +537,7 @@ export function Debts() {
       )}
 
       {/* Debt projection chart */}
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Projected Debt Over Time</CardTitle>
           <CardDescription>
@@ -672,8 +672,8 @@ export function Debts() {
             )}
           </div>
           {tableOpen && (
-            <div className="mt-2 overflow-x-auto rounded-lg border border-border">
-              <table className="w-full text-xs">
+            <div className="mt-2 overflow-x-auto max-w-full rounded-lg border border-border">
+              <table className="min-w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/50">
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground sticky left-0 bg-muted/50">Month</th>
