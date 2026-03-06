@@ -105,7 +105,7 @@ export function Calendar() {
         const date = new Date(year, month, day)
         if (date >= rangeStart && date < rangeEnd) {
           if (payoffDate && date > payoffDate) continue
-          addEvent(date, { type: "debt", name: debt.name, amount: debt.minimum_payment })
+          addEvent(date, { type: "debt", name: debt.name, amount: debt.actual_payment ?? debt.minimum_payment })
         }
       }
     }
@@ -158,7 +158,7 @@ export function Calendar() {
           if (payoffDate && date > payoffDate) { m++; continue }
           const key = format(date, "yyyy-MM-dd")
           const existing = map.get(key) ?? []
-          existing.push({ type: "debt", name: debt.name, amount: debt.minimum_payment })
+          existing.push({ type: "debt", name: debt.name, amount: debt.actual_payment ?? debt.minimum_payment })
           map.set(key, existing)
         }
         m++

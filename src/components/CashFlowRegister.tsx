@@ -45,14 +45,15 @@ export function CashFlowRegister() {
       }
     }
 
-    // Debt minimum payments (on due_day)
+    // Debt payments (on due_day)
     for (const debt of debts) {
       const dueDay = debt.due_day
+      const payment = debt.actual_payment ?? debt.minimum_payment
       const maxDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
       const day = Math.min(dueDay, maxDay)
       const date = new Date(now.getFullYear(), now.getMonth(), day)
       if (date >= monthStart && date < monthEnd) {
-        events.push({ date, label: `${debt.name} (minimum)`, type: "debt", amount: -debt.minimum_payment })
+        events.push({ date, label: `${debt.name} (payment)`, type: "debt", amount: -payment })
       }
     }
 

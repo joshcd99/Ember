@@ -198,7 +198,7 @@ export function getMonthlyBills(bills: Bill[]): number {
 }
 
 export function getMonthlyMinimums(debts: Debt[]): number {
-  return debts.reduce((sum, d) => sum + d.minimum_payment, 0)
+  return debts.reduce((sum, d) => sum + (d.actual_payment ?? d.minimum_payment), 0)
 }
 
 export function getCheckinStreak(checkins: Checkin[]): number {
