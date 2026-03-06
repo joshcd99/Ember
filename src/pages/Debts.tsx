@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/EmptyState"
 import { DebtModal } from "@/components/modals/DebtModal"
 import { PayoffCelebrationModal } from "@/components/modals/PayoffCelebrationModal"
 import { Input } from "@/components/ui/input"
-import { Check, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame, Download, ArrowUpDown, AlertTriangle, Clock } from "lucide-react"
+import { Check, CheckCircle2, ChevronDown, CreditCard, TrendingDown, Snowflake, MinusCircle, Plus, Pencil, GripVertical, ListOrdered, Flame, Download, ArrowUpDown, AlertTriangle, Clock } from "lucide-react"
 import {
   LineChart,
   Line,
@@ -330,6 +330,7 @@ export function Debts() {
     const paid = debt.starting_balance - debt.current_balance
     const pct = debt.starting_balance > 0 ? (paid / debt.starting_balance) * 100 : 0
     const type = debt.debt_type ?? "other"
+    const isPaidOff = debt.current_balance <= 0.01
     const isPromo = hasActivePromo(debt)
     const payingExtra = debt.actual_payment != null && debt.actual_payment > debt.minimum_payment
     const extraAmt = payingExtra ? debt.actual_payment! - debt.minimum_payment : 0
@@ -366,17 +367,28 @@ export function Debts() {
     return (
       <Card
         key={debt.id}
-        className={cn("cursor-pointer hover:border-primary/50 transition-colors", isPromo && "md:row-span-2")}
+        className={cn(
+          "cursor-pointer hover:border-primary/50 transition-colors",
+          isPromo && !isPaidOff && "md:row-span-2",
+          isPaidOff && "border-success/30 bg-success/5"
+        )}
         onClick={() => onEdit(debt)}
       >
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <CreditCard className="h-5 w-5 text-muted-foreground" />
-              <CardTitle className="text-base">{debt.name}</CardTitle>
+              {isPaidOff ? (
+                <CheckCircle2 className="h-5 w-5 text-success" />
+              ) : (
+                <CreditCard className="h-5 w-5 text-muted-foreground" />
+              )}
+              <CardTitle className={cn("text-base", isPaidOff && "line-through text-muted-foreground")}>{debt.name}</CardTitle>
             </div>
             <div className="flex items-center gap-2">
-              {debtSort !== "category" && (
+              {isPaidOff && (
+                <Badge variant="success">Paid off!</Badge>
+              )}
+              {debtSort !== "category" && !isPaidOff && (
                 <span
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
                   style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[type] + "1a", color: DEBT_TYPE_CHART_COLORS[type] }}
@@ -385,43 +397,57 @@ export function Debts() {
                   {DEBT_TYPE_META[type].label}
                 </span>
               )}
-              <Badge variant={aprBadgeVariant(debt.interest_rate)}>
-                {formatPercent(debt.interest_rate)} APR
-              </Badge>
+              {!isPaidOff && (
+                <Badge variant={aprBadgeVariant(debt.interest_rate)}>
+                  {formatPercent(debt.interest_rate)} APR
+                </Badge>
+              )}
               <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Balance</span>
-            <span className="font-semibold">{formatCurrency(debt.current_balance)}</span>
-          </div>
-          <Progress value={pct} />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{formatCurrency(paid)} paid</span>
-            <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
-          </div>
+          {isPaidOff ? (
+            <>
+              <div className="flex items-center justify-center gap-2 py-2 text-success">
+                <Flame className="h-5 w-5" />
+                <span className="text-sm font-semibold">Debt demolished! {formatCurrency(debt.starting_balance)} burned down.</span>
+              </div>
+              <Progress value={100} />
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Balance</span>
+                <span className="font-semibold">{formatCurrency(debt.current_balance)}</span>
+              </div>
+              <Progress value={pct} />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{formatCurrency(paid)} paid</span>
+                <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
+              </div>
 
-          {/* Payment detail row */}
-          {payingExtra && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground pt-1 border-t border-border">
-              <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
-              <span>&middot;</span>
-              <span>Paying: {formatCurrencyExact(debt.actual_payment!)}/mo</span>
-              <span>&middot;</span>
-              <span className="text-success font-medium">+{formatCurrency(extraAmt)} extra</span>
-              {interestSavedEstimate > 0 && (
-                <>
+              {/* Payment detail row */}
+              {payingExtra && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground pt-1 border-t border-border">
+                  <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
                   <span>&middot;</span>
-                  <span className="text-success">saves ~{formatCurrency(interestSavedEstimate)} in interest</span>
-                </>
+                  <span>Paying: {formatCurrencyExact(debt.actual_payment!)}/mo</span>
+                  <span>&middot;</span>
+                  <span className="text-success font-medium">+{formatCurrency(extraAmt)} extra</span>
+                  {interestSavedEstimate > 0 && (
+                    <>
+                      <span>&middot;</span>
+                      <span className="text-success">saves ~{formatCurrency(interestSavedEstimate)} in interest</span>
+                    </>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
 
           {/* Promo alert section */}
-          {isPromo && debt.promo_type === "deferred_interest" && (
+          {!isPaidOff && isPromo && debt.promo_type === "deferred_interest" && (
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
               <div className="flex items-center gap-2 text-sm">
                 <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
@@ -464,7 +490,7 @@ export function Debts() {
             </div>
           )}
 
-          {isPromo && debt.promo_type === "true_zero" && (
+          {!isPaidOff && isPromo && debt.promo_type === "true_zero" && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="h-4 w-4 text-primary flex-shrink-0" />
