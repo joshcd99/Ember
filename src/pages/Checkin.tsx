@@ -2,11 +2,13 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { CheckCircle2, Plus, Flame, ShoppingCart, DollarSign, CreditCard, Coffee, PiggyBank } from "lucide-react"
+import { CheckCircle2, Plus, Flame, ShoppingCart, DollarSign, CreditCard, Coffee, PiggyBank, PartyPopper } from "lucide-react"
 import { useAppData } from "@/contexts/DataContext"
 import { getCheckinStreak } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { celebrateDebtPayoff } from "@/lib/confetti"
 import type { TransactionType } from "@/types/database"
+import type { Debt } from "@/types/database"
 
 const typeConfig: Record<TransactionType, { label: string; icon: React.ReactNode; color: string }> = {
   expense: { label: "Spending", icon: <ShoppingCart className="h-5 w-5" />, color: "text-destructive" },
@@ -15,13 +17,16 @@ const typeConfig: Record<TransactionType, { label: string; icon: React.ReactNode
 }
 
 export function Checkin() {
-  const { checkins, transactions, savingsAccount, addTransaction, logCheckin, updateSavingsAccount, loading } = useAppData()
+  const { checkins, transactions, debts, savingsAccount, addTransaction, logCheckin, updateDebt, updateSavingsAccount, loading } = useAppData()
 
   const [step, setStep] = useState<"start" | "type" | "details" | "savings" | "done">("start")
   const [selectedType, setSelectedType] = useState<TransactionType | null>(null)
   const [amount, setAmount] = useState("")
   const [label, setLabel] = useState("")
   const [saving, setSaving] = useState(false)
+
+  const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null)
+  const [debtPaidOff, setDebtPaidOff] = useState(false)
 
   const [savingsBalance, setSavingsBalance] = useState(0)
   const [savingsApy, setSavingsApy] = useState(0)
@@ -34,6 +39,13 @@ export function Checkin() {
     }
   }, [savingsAccount])
 
+  // Fire confetti when a debt is paid off
+  useEffect(() => {
+    if (debtPaidOff && step === "done") {
+      celebrateDebtPayoff()
+    }
+  }, [debtPaidOff, step])
+
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading...</div>
   }
@@ -43,19 +55,39 @@ export function Checkin() {
   const todayEntries = transactions.filter(t => t.date === todayStr)
   const checkedInToday = checkins.some(c => c.date === todayStr && c.completed_at)
 
+  const activeDebts = debts.filter(d => d.current_balance > 0)
+
+  const handleSelectDebt = (debt: Debt) => {
+    setSelectedDebt(debt)
+    setAmount(String(debt.actual_payment ?? debt.minimum_payment))
+    setLabel(debt.name)
+  }
+
   const handleSubmit = async () => {
     if (!selectedType || !amount || !label) return
     setSaving(true)
     try {
+      const paymentAmount = Number(amount)
+
       await addTransaction({
         type: selectedType,
-        amount: Number(amount),
+        amount: paymentAmount,
         label,
         date: todayStr,
         linked_income_source_id: null,
-        linked_debt_id: null,
+        linked_debt_id: selectedDebt?.id ?? null,
         is_projected: false,
       })
+
+      // Update debt balance if linked
+      if (selectedDebt) {
+        const newBalance = Math.max(0, selectedDebt.current_balance - paymentAmount)
+        await updateDebt(selectedDebt.id, { current_balance: newBalance })
+        if (newBalance === 0) {
+          setDebtPaidOff(true)
+        }
+      }
+
       await logCheckin()
       setStep("done")
     } catch {
@@ -100,6 +132,8 @@ export function Checkin() {
     setSelectedType(null)
     setAmount("")
     setLabel("")
+    setSelectedDebt(null)
+    setDebtPaidOff(false)
   }
 
   return (
@@ -199,7 +233,127 @@ export function Checkin() {
         </div>
       )}
 
-      {step === "details" && selectedType && (
+      {step === "details" && selectedType === "debt_payment" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <span className="text-primary">
+                <CreditCard className="h-5 w-5" />
+              </span>
+              Debt Payment
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Debt picker */}
+            {activeDebts.length > 0 && !selectedDebt && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Which debt?</label>
+                <div className="space-y-2">
+                  {activeDebts.map(debt => (
+                    <button
+                      key={debt.id}
+                      type="button"
+                      onClick={() => handleSelectDebt(debt)}
+                      className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-colors text-left"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{debt.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Balance: {formatCurrency(debt.current_balance)}
+                        </p>
+                      </div>
+                      <span className="text-sm font-medium text-primary">
+                        {formatCurrency(debt.actual_payment ?? debt.minimum_payment)}
+                      </span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDebt(null)
+                      setAmount("")
+                      setLabel("")
+                    }}
+                    className="w-full p-3 rounded-lg border border-dashed border-border hover:border-primary/50 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Other / unlisted debt
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Amount + label fields (shown after picking a debt, or if no active debts, or "other") */}
+            {(selectedDebt || activeDebts.length === 0) && (
+              <>
+                {selectedDebt && (
+                  <div className="flex items-center justify-between p-2 rounded-md bg-primary/5 border border-primary/20">
+                    <span className="text-sm font-medium">{selectedDebt.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDebt(null)
+                        setAmount("")
+                        setLabel("")
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={amount}
+                      onChange={e => setAmount(e.target.value)}
+                      className="pl-7"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Label</label>
+                  <Input
+                    placeholder="e.g., Extra payment — Chase Visa"
+                    value={label}
+                    onChange={e => setLabel(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1" onClick={() => {
+                    setSelectedDebt(null)
+                    setAmount("")
+                    setLabel("")
+                    setStep("type")
+                  }}>
+                    Back
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleSubmit}
+                    disabled={!amount || !label || saving}
+                  >
+                    {saving ? "Saving..." : "Submit"}
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {/* Back button when in picker view */}
+            {!selectedDebt && activeDebts.length > 0 && (
+              <Button variant="outline" className="w-full" onClick={() => setStep("type")}>
+                Back
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {step === "details" && selectedType && selectedType !== "debt_payment" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -230,9 +384,7 @@ export function Checkin() {
                 placeholder={
                   selectedType === "expense"
                     ? "e.g., Groceries, Coffee"
-                    : selectedType === "income"
-                    ? "e.g., Paycheck, Freelance"
-                    : "e.g., Extra payment — Chase Visa"
+                    : "e.g., Paycheck, Freelance"
                 }
                 value={label}
                 onChange={e => setLabel(e.target.value)}
@@ -319,11 +471,23 @@ export function Checkin() {
       {step === "done" && (
         <Card className="text-center">
           <CardContent className="py-8">
-            <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
-            <h2 className="text-xl font-semibold mb-1">Feeding the flame.</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              {amount ? `${formatCurrency(Number(amount))} — ${label}` : "Still burning. Nothing to log today."}
-            </p>
+            {debtPaidOff ? (
+              <>
+                <PartyPopper className="h-12 w-12 text-warning mx-auto mb-3" />
+                <h2 className="text-xl font-semibold mb-1">Debt demolished!</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {formatCurrency(Number(amount))} — {label} is paid off!
+                </p>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
+                <h2 className="text-xl font-semibold mb-1">Feeding the flame.</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {amount ? `${formatCurrency(Number(amount))} — ${label}` : "Still burning. Nothing to log today."}
+                </p>
+              </>
+            )}
             <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={reset}>
                 Add another

@@ -23,6 +23,7 @@ import type { Debt, DebtType, PromoType } from "@/types/database"
 import { DEBT_TYPE_META } from "@/lib/debt-types"
 import { formatCurrency, cn } from "@/lib/utils"
 import { computeInterestSavings } from "@/lib/interest-savings"
+import { celebrateDebtPayoff } from "@/lib/confetti"
 import { Trash2, ChevronDown, AlertTriangle, Info } from "lucide-react"
 
 interface DebtModalProps {
@@ -119,6 +120,9 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
         await addDebt(data)
       }
       onClose()
+      if (isEdit && Number(currentBalance) === 0 && debt.current_balance > 0) {
+        celebrateDebtPayoff()
+      }
     } catch (err) {
       console.error("DebtModal save failed:", err)
     } finally {
