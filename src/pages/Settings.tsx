@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/contexts/AuthContext"
 import { useAppData } from "@/contexts/DataContext"
+import { supabase } from "@/lib/supabase"
 import { useTheme } from "@/hooks/useTheme"
 import { useHousehold } from "@/hooks/useHousehold"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
@@ -36,6 +37,12 @@ export function Settings() {
   const [lowerThreshold, setLowerThreshold] = useState(String(householdSettings?.balance_lower_threshold ?? 2000))
   const [thresholdsDirty, setThresholdsDirty] = useState(false)
 
+  // Delete all data
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   const activeMembers = members.filter(m => m.status === "active")
   const pendingMembers = members.filter(m => m.status === "pending")
 
@@ -47,6 +54,21 @@ export function Settings() {
       setEditingName(false)
     } finally {
       setSavingName(false)
+    }
+  }
+
+  const handleDeleteAllData = async () => {
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const { error } = await supabase.rpc("delete_household_for_user")
+      if (error) throw error
+      // AuthContext re-resolves on reload and creates a fresh empty household
+      window.location.reload()
+    } catch (e) {
+      console.error("Settings: failed to delete household data", e)
+      setDeleteError("Something went wrong deleting your data. Please try again.")
+      setDeleting(false)
     }
   }
 
@@ -412,15 +434,66 @@ export function Settings() {
             Your data is stored securely in your own Supabase database. Row-level security
             ensures only your household members can access your shared records.
           </p>
-          <Button variant="destructive" size="sm" disabled>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={useMockMode}
+            onClick={() => {
+              setDeleteConfirmText("")
+              setDeleteError(null)
+              setDeleteDialogOpen(true)
+            }}
+          >
             <Trash2 className="h-4 w-4" />
             Delete all my data
           </Button>
+          {useMockMode && (
+            <p className="text-xs text-muted-foreground">Not available in demo mode.</p>
+          )}
         </CardContent>
       </Card>
 
       {/* Version */}
       <p className="text-xs text-muted-foreground text-center">Ember v{version}</p>
+
+      {/* Delete all data confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={(open) => !open && !deleting && setDeleteDialogOpen(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete all my data</DialogTitle>
+            <DialogDescription>
+              This permanently deletes all debts, income sources, expenses, transactions,
+              check-ins, savings, and settings for your household
+              {activeMembers.length > 1 && " — for every member, not just you"}.
+              Your account stays, but this can't be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm">
+              Type <span className="font-semibold">delete</span> to confirm:
+            </p>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="delete"
+              autoFocus
+            />
+            {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirmText.trim().toLowerCase() !== "delete" || deleting}
+              onClick={handleDeleteAllData}
+            >
+              {deleting ? "Deleting..." : "Delete everything"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Remove member confirmation dialog */}
       <Dialog open={!!confirmRemoveMemberId} onOpenChange={(open) => !open && setConfirmRemoveMemberId(null)}>

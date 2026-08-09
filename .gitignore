@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Env files (contains Supabase credentials)
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local state
+supabase/.temp/
