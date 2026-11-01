@@ -42,12 +42,41 @@ export function RecurringScanner() {
   const [candidates, setCandidates] = useState<RecurringCandidate[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [scanMeta, setScanMeta] = useState<{ count: number; since: string } | null>(null)
+  const [enriched, setEnriched] = useState<Map<string, { name: string; category?: string }>>(new Map())
+  const [enriching, setEnriching] = useState(false)
+
+  // Claude-powered cleanup: canonical brand names + category suggestions,
+  // applied asynchronously so detection results show immediately
+  const enrich = async (cands: RecurringCandidate[]) => {
+    setEnriching(true)
+    try {
+      const { data } = await supabase.functions.invoke("simplefin-sync", {
+        body: {
+          action: "enrich",
+          merchants: cands.map(c => ({
+            key: c.key,
+            sample: c.sampleDescription,
+            amount: c.amount,
+            cadence: c.cadence,
+          })),
+          categories: billCategories.map(c => c.name),
+        },
+      })
+      const rows = (data?.enriched ?? []) as { key: string; name: string; category?: string }[]
+      if (rows.length > 0) setEnriched(new Map(rows.map(e => [e.key, e])))
+    } catch (err) {
+      console.warn("RecurringScanner: enrichment unavailable", err)
+    } finally {
+      setEnriching(false)
+    }
+  }
 
   const scan = async () => {
     setScanning(true)
     setError(null)
     setCandidates(null)
     setSelected(new Set())
+    setEnriched(new Map())
     try {
       // Pull 6 months of history into the raw feed first (idempotent)
       const { error: fnError } = await supabase.functions.invoke("simplefin-sync", {
@@ -75,7 +104,9 @@ export function RecurringScanner() {
         ((acctRes.data as { id: string; account_kind: string | null }[]) ?? []).map(a => [a.id, a.account_kind])
       )
       setScanMeta(txns.length > 0 ? { count: txns.length, since: txns[0].posted } : null)
-      setCandidates(detectRecurringCharges(txns, bills, kinds))
+      const detected = detectRecurringCharges(txns, bills, kinds)
+      setCandidates(detected)
+      if (detected.length > 0) enrich(detected)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed.")
     } finally {
@@ -102,15 +133,19 @@ export function RecurringScanner() {
     setAdding(true)
     setError(null)
     try {
-      const subscriptionCategory = billCategories.find(c => /subscri|stream/i.test(c.name))?.name
+      const fallbackCategory = billCategories.find(c => /subscri|stream/i.test(c.name))?.name
         ?? billCategories.find(c => c.name === "Other")?.name
         ?? "Other"
       for (const c of candidates.filter(c => selected.has(c.key))) {
+        const e = enriched.get(c.key)
+        const category = e?.category && billCategories.some(bc => bc.name === e.category)
+          ? e.category
+          : fallbackCategory
         await addBill({
-          name: c.name,
+          name: e?.name || c.name,
           amount: c.amount,
           next_due_date: c.nextExpected,
-          category: subscriptionCategory,
+          category,
           notes: `Detected from bank history — ${c.occurrences} charges, ${CADENCE_LABELS[c.cadence].toLowerCase()} (last: ${c.sampleDescription.slice(0, 80)})`,
           ...cadenceToBillFields(c),
         })
@@ -169,7 +204,7 @@ export function RecurringScanner() {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
-                      {c.name}
+                      {enriched.get(c.key)?.name || c.name}
                       {c.alreadyTracked && (
                         <Badge variant="secondary" className="ml-2 text-[10px]">Already tracked</Badge>
                       )}
@@ -177,6 +212,7 @@ export function RecurringScanner() {
                     <p className="text-xs text-muted-foreground truncate">
                       {CADENCE_LABELS[c.cadence]} · {c.occurrences}× · last {formatDate(c.lastDate)}
                       {c.amountVaries && " · amount varies"}
+                      {enriched.get(c.key)?.category && ` · ${enriched.get(c.key)!.category}`}
                     </p>
                   </div>
                   <span className="text-sm font-semibold shrink-0">
@@ -189,6 +225,7 @@ export function RecurringScanner() {
 
           {!scanning && scanMeta && (
             <p className="text-xs text-muted-foreground">
+              {enriching && "Cleaning up names… · "}
               Scanned {scanMeta.count.toLocaleString()} bank transactions since {formatDate(scanMeta.since)}.
               {new Date(scanMeta.since) > new Date(Date.now() - 100 * 86400e3) &&
                 " Your bank only provided recent history — more patterns will surface as syncs accumulate."}

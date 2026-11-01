@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2"
+import Anthropic from "npm:@anthropic-ai/sdk@0.136.0"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -333,6 +334,64 @@ Deno.serve(async (req) => {
         results.push(await syncAndRecord(admin, conn, lookbackDays))
       }
       return json({ results })
+    }
+
+    if (action === "enrich") {
+      // Clean up detected recurring-charge merchant names and suggest
+      // categories. Gracefully returns nothing if no API key is configured.
+      const apiKey = Deno.env.get("ANTHROPIC_API_KEY")
+      const merchants = Array.isArray(body.merchants) ? body.merchants.slice(0, 80) : []
+      const categories = Array.isArray(body.categories) ? body.categories.slice(0, 30) : []
+      if (!apiKey || merchants.length === 0) return json({ enriched: [] })
+
+      try {
+        const anthropic = new Anthropic({ apiKey })
+        const response = await anthropic.beta.messages.create({
+          model: "claude-opus-5-5",
+          max_tokens: 8192,
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+          output_config: { effort: "low" },
+          system:
+            "You clean up raw bank transaction descriptors for a personal budgeting app. " +
+            "For each merchant, return the recognizable consumer brand or service name " +
+            "(short, properly capitalized, no reference codes), and the best-fitting category " +
+            "chosen EXACTLY from the provided category list. " +
+            'Respond with ONLY a JSON object: {"enriched": [{"key": string, "name": string, "category": string}]} — ' +
+            "one entry per input merchant, keyed by the given key. No markdown fences, no commentary.",
+          messages: [
+            {
+              role: "user",
+              content: JSON.stringify({
+                categories,
+                merchants: merchants.map((m: Record<string, unknown>) => ({
+                  key: m.key,
+                  descriptor: String(m.sample ?? "").slice(0, 150),
+                  amount: m.amount,
+                  cadence: m.cadence,
+                })),
+              }),
+            },
+          ],
+        })
+
+        if (response.stop_reason === "refusal") return json({ enriched: [] })
+        const text = response.content
+          .filter((b: { type: string }) => b.type === "text")
+          .map((b: { text?: string }) => b.text ?? "")
+          .join("")
+          .trim()
+          .replace(/^```(?:json)?\n?|\n?```$/g, "")
+        const parsed = JSON.parse(text)
+        const enriched = Array.isArray(parsed?.enriched)
+          ? parsed.enriched.filter((e: Record<string, unknown>) =>
+              typeof e.key === "string" && typeof e.name === "string")
+          : []
+        return json({ enriched })
+      } catch (err) {
+        console.error("simplefin-sync: enrich failed", err)
+        return json({ enriched: [] })
+      }
     }
 
     return json({ error: "Unknown action" }, 400)
