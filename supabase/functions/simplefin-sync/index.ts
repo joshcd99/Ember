@@ -76,12 +76,15 @@ function guessAccountKind(name: string): string {
   return "other"
 }
 
-async function syncConnection(admin: SupabaseClient, conn: ConnectionRow): Promise<{ accounts: number; payments: number }> {
+async function syncConnection(admin: SupabaseClient, conn: ConnectionRow, lookbackDays?: number): Promise<{ accounts: number; payments: number }> {
   const now = Math.floor(Date.now() / 1000)
-  // Overlap window so late-posting transactions aren't missed; dedupe handles repeats
-  const startEpoch = conn.last_synced_at
-    ? Math.floor(new Date(conn.last_synced_at).getTime() / 1000) - 7 * 86400
-    : now - 30 * 86400
+  // Overlap window so late-posting transactions aren't missed; dedupe handles
+  // repeats. An explicit lookback (e.g. recurring-charge scans) reaches back further.
+  const startEpoch = lookbackDays
+    ? now - Math.min(lookbackDays, 365) * 86400
+    : conn.last_synced_at
+      ? Math.floor(new Date(conn.last_synced_at).getTime() / 1000) - 7 * 86400
+      : now - 30 * 86400
 
   const accounts = await fetchAccounts(conn.access_url, startEpoch)
 
@@ -132,10 +135,34 @@ async function syncConnection(admin: SupabaseClient, conn: ConnectionRow): Promi
     }
     if (!existing) payload.account_kind = guessAccountKind(account.name ?? "")
 
-    const { error: upsertErr } = await admin.from("simplefin_accounts").upsert(payload, {
-      onConflict: "connection_id,simplefin_id",
-    })
+    const { data: acctRow, error: upsertErr } = await admin
+      .from("simplefin_accounts")
+      .upsert(payload, { onConflict: "connection_id,simplefin_id" })
+      .select("id, sync_enabled")
+      .single()
     if (upsertErr) throw upsertErr
+
+    // Raw feed for every synced account — powers recurring-charge detection
+    if (acctRow && acctRow.sync_enabled !== false) {
+      const rawRows = (account.transactions ?? [])
+        .filter((t) => !t.pending)
+        .map((t) => ({
+          household_id: conn.household_id,
+          account_id: acctRow.id,
+          sf_txn_id: t.id,
+          posted: new Date(t.posted * 1000).toISOString().slice(0, 10),
+          amount: parseFloat(t.amount),
+          description: (t.description ?? "").slice(0, 300),
+          pending: false,
+        }))
+        .filter((r) => Number.isFinite(r.amount))
+      if (rawRows.length > 0) {
+        const { error: rawErr } = await admin
+          .from("simplefin_transactions")
+          .upsert(rawRows, { onConflict: "account_id,sf_txn_id", ignoreDuplicates: true })
+        if (rawErr) throw rawErr
+      }
+    }
 
     if (!existing || existing.sync_enabled === false) continue
 
@@ -196,9 +223,9 @@ async function syncConnection(admin: SupabaseClient, conn: ConnectionRow): Promi
   return { accounts: accounts.length, payments: paymentsInserted }
 }
 
-async function syncAndRecord(admin: SupabaseClient, conn: ConnectionRow) {
+async function syncAndRecord(admin: SupabaseClient, conn: ConnectionRow, lookbackDays?: number) {
   try {
-    const result = await syncConnection(admin, conn)
+    const result = await syncConnection(admin, conn, lookbackDays)
     await admin
       .from("simplefin_connections")
       .update({ last_synced_at: new Date().toISOString(), last_sync_status: "ok", last_sync_error: null })
@@ -294,13 +321,16 @@ Deno.serve(async (req) => {
     }
 
     if (action === "sync") {
+      const lookbackDays = typeof body.lookback_days === "number" && body.lookback_days > 0
+        ? Math.min(body.lookback_days, 365)
+        : undefined
       let query = admin.from("simplefin_connections").select("*").in("household_id", householdIds)
       if (body.connection_id) query = query.eq("id", body.connection_id)
       const { data: conns, error } = await query
       if (error) throw error
       const results = []
       for (const conn of (conns ?? []) as ConnectionRow[]) {
-        results.push(await syncAndRecord(admin, conn))
+        results.push(await syncAndRecord(admin, conn, lookbackDays))
       }
       return json({ results })
     }

@@ -12,6 +12,7 @@ import { Calendar } from "@/pages/Calendar"
 import { Scenarios } from "@/pages/Scenarios"
 import { Settings } from "@/pages/Settings"
 import { Review } from "@/pages/Review"
+import { Transactions } from "@/pages/Transactions"
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
                 <Route path="/bills" element={<Bills />} />
                 <Route path="/checkin" element={<Checkin />} />
                 <Route path="/calendar" element={<Calendar />} />
+                <Route path="/transactions" element={<Transactions />} />
                 <Route path="/scenarios" element={<Scenarios />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/review" element={<Review />} />
