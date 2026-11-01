@@ -343,6 +343,15 @@ export function Debts() {
   const renderDebtCard = (debt: Debt, onEdit: (d: Debt) => void) => {
     const paid = debt.starting_balance - debt.current_balance
     const pct = debt.starting_balance > 0 ? (paid / debt.starting_balance) * 100 : 0
+    // Balance has grown past the original (accrued interest, e.g. deferred loans)
+    const grown = paid < -0.005
+    const accrued = -paid
+    const defEndLabel = debt.deferment_end_date
+      ? new Date(debt.deferment_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
+      : ""
+    const payLabel = isInDeferment(debt)
+      ? `Payments start ${defEndLabel}`
+      : `Min: ${formatCurrencyExact(debt.minimum_payment)}/mo`
     const type = debt.debt_type ?? "other"
     const isPaidOff = debt.current_balance <= 0.01
     const isPromo = hasActivePromo(debt)
@@ -440,11 +449,36 @@ export function Debts() {
                 <span className="text-muted-foreground">Balance</span>
                 <span className="font-semibold">{formatCurrency(debt.current_balance)}</span>
               </div>
-              <Progress value={pct} />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatCurrency(paid)} paid</span>
-                <span>Min: {formatCurrencyExact(debt.minimum_payment)}/mo</span>
-              </div>
+              {grown ? (
+                <>
+                  {/* Balance grew past the original: the bar is the current
+                      balance, split into original principal vs accrued growth */}
+                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full bg-muted-foreground/25"
+                      style={{ width: `${(debt.starting_balance / debt.current_balance) * 100}%` }}
+                    />
+                    <div
+                      className="h-full bg-destructive/70"
+                      style={{ width: `${(accrued / debt.current_balance) * 100}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between gap-2 text-xs">
+                    <span className="text-destructive font-medium">
+                      +{formatCurrency(accrued)} accrued over {formatCurrency(debt.starting_balance)} original
+                    </span>
+                    <span className="text-muted-foreground whitespace-nowrap">{payLabel}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Progress value={pct} />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{formatCurrency(paid)} paid</span>
+                    <span>{payLabel}</span>
+                  </div>
+                </>
+              )}
 
               {/* Payment detail row */}
               {payingExtra && (

@@ -301,7 +301,9 @@ export function Dashboard() {
               <>
                 <Progress value={progressPercent} className="mb-2" />
                 <p className="text-xs text-muted-foreground">
-                  {formatCurrency(paidOff)} paid off ({progressPercent.toFixed(0)}% of {formatCurrency(startingDebt)})
+                  {paidOff < 0
+                    ? `+${formatCurrency(-paidOff)} accrued over ${formatCurrency(startingDebt)} original`
+                    : `${formatCurrency(paidOff)} paid off (${progressPercent.toFixed(0)}% of ${formatCurrency(startingDebt)})`}
                 </p>
               </>
             ) : (
@@ -428,7 +430,9 @@ export function Dashboard() {
                           <p className="font-display text-xl">{formatCurrency(group.balance)}</p>
                           <Progress value={pct} className="h-1.5" />
                           <p className="text-[10px] text-muted-foreground">
-                            {formatCurrency(paidOff)} paid · {pct.toFixed(0)}%
+                            {paidOff < 0
+                              ? `+${formatCurrency(-paidOff)} accrued`
+                              : `${formatCurrency(paidOff)} paid · ${pct.toFixed(0)}%`}
                           </p>
                           {payoffDate && (
                             <div className="space-y-0.5">

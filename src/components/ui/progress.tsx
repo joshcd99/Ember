@@ -13,7 +13,7 @@ const Progress = forwardRef<
   >
     <ProgressPrimitive.Indicator
       className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
-      style={{ width: `${value || 0}%` }}
+      style={{ width: `${Math.min(100, Math.max(0, value || 0))}%` }}
     />
   </ProgressPrimitive.Root>
 ))
