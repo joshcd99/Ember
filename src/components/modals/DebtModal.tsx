@@ -668,6 +668,12 @@ function Field({
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={() => {
+            // Money fields settle to two decimals: "151.6" → "151.60"
+            if (prefix === "$" && value.includes(".") && !isNaN(Number(value))) {
+              onChange(Number(value).toFixed(2))
+            }
+          }}
           className={`${prefix ? "pl-7" : ""} ${suffix ? "pr-7" : ""}`}
         />
         {suffix && (
