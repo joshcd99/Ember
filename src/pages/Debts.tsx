@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react"
+import { useSearchParams } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -217,6 +218,19 @@ export function Debts() {
 
   const openAdd = () => { setEditingDebt(null); setModalOpen(true) }
   const openEdit = (debt: Debt) => { setEditingDebt(debt); setModalOpen(true) }
+
+  // Deep link from dashboard notifications: /debts?edit=<debtId>
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const editId = searchParams.get("edit")
+    if (!editId || debts.length === 0) return
+    const target = debts.find(d => d.id === editId)
+    if (target) {
+      setEditingDebt(target)
+      setModalOpen(true)
+    }
+    setSearchParams({}, { replace: true })
+  }, [searchParams, debts, setSearchParams])
 
   if (debts.length === 0) {
     return (

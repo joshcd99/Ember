@@ -232,6 +232,60 @@ export function Dashboard() {
         )
       })()}
 
+      {/* Deferment ending / payments resuming */}
+      {(() => {
+        const today = new Date()
+        const items = debts
+          .filter(d => d.deferment_end_date && d.current_balance > 0)
+          .map(d => ({
+            d,
+            days: differenceInDays(new Date(d.deferment_end_date + "T00:00"), today),
+            needsInfo: d.minimum_payment <= 0 && (d.actual_payment ?? 0) <= 0,
+          }))
+          // Surface: deferments ending within 60 days, and any already-ended
+          // deferment still missing a payment amount
+          .filter(x => (x.days >= 0 && x.days <= 60) || (x.days < 0 && x.needsInfo))
+          .sort((a, b) => a.days - b.days)
+        if (items.length === 0) return null
+        const anyNeedsInfo = items.some(x => x.needsInfo)
+        return (
+          <Card className={anyNeedsInfo ? "border-warning/30 bg-warning/5" : "border-primary/30 bg-primary/5"}>
+            <CardContent className="flex items-start gap-4">
+              <div className={`flex-shrink-0 h-12 w-12 rounded-full flex items-center justify-center ${anyNeedsInfo ? "bg-warning/10" : "bg-primary/10"}`}>
+                <CalendarClock className={`h-6 w-6 ${anyNeedsInfo ? "text-warning" : "text-primary"}`} />
+              </div>
+              <div className="flex-1 space-y-2">
+                <p className={`text-sm font-medium ${anyNeedsInfo ? "text-warning" : "text-primary"}`}>
+                  {items.some(x => x.days < 0) ? "Student loan payments resuming" : "Deferment ending soon"}
+                </p>
+                {items.map(({ d, days, needsInfo }) => {
+                  const endLabel = new Date(d.deferment_end_date + "T00:00")
+                    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                  return (
+                    <div key={d.id} className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-foreground">
+                        {d.name} —{" "}
+                        {days < 0
+                          ? `payments resumed ${endLabel}`
+                          : `payments resume ${endLabel} (${days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`})`}
+                        {needsInfo
+                          ? ". Add your payment amount and due day."
+                          : ` at ${formatCurrency(d.actual_payment ?? d.minimum_payment)}/mo.`}
+                      </p>
+                      <Link to={`/debts?edit=${d.id}`}>
+                        <Button variant={needsInfo ? "default" : "outline"} size="sm" className="whitespace-nowrap">
+                          {needsInfo ? "Set payment" : "Review"} <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       {/* Stats grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total debt */}
