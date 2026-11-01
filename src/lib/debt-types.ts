@@ -13,6 +13,7 @@ export const DEBT_TYPE_META: Record<DebtType, DebtTypeMeta> = {
   personal_loan: { label: "Personal Loan", pluralLabel: "Personal Loans", emoji: "💰", color: "var(--debt-pl)", bgColor: "var(--debt-pl-bg)" },
   auto_loan: { label: "Auto Loan", pluralLabel: "Auto Loans", emoji: "🚗", color: "var(--debt-auto)", bgColor: "var(--debt-auto-bg)" },
   student_loan: { label: "Student Loan", pluralLabel: "Student Loans", emoji: "🎓", color: "var(--debt-student)", bgColor: "var(--debt-student-bg)" },
+  bnpl: { label: "BNPL", pluralLabel: "BNPL Plans", emoji: "🛍️", color: "var(--debt-bnpl)", bgColor: "var(--debt-bnpl-bg)" },
   other: { label: "Other", pluralLabel: "Other", emoji: "📋", color: "var(--debt-other)", bgColor: "var(--debt-other-bg)" },
 }
 
@@ -22,6 +23,7 @@ export const DEBT_TYPE_CHART_COLORS: Record<DebtType, string> = {
   personal_loan: "#c9975a",
   auto_loan: "#7a9eb8",
   student_loan: "#7eb897",
+  bnpl: "#b08bb5",
   other: "#9e9080",
 }
 
@@ -30,6 +32,7 @@ export const DEBT_TYPE_STACK_ORDER: DebtType[] = [
   "student_loan",
   "auto_loan",
   "personal_loan",
+  "bnpl",
   "credit_card",
   "other",
 ]
