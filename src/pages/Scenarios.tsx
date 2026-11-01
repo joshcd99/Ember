@@ -345,8 +345,11 @@ export function Scenarios() {
   }, [chartData, timeframe, nowAbsMonth, customStartMonth, customStartYear, customEndMonth, customEndYear])
 
   // --- Summary stats ---
-  const debtFreeDate = hasDebts ? scenario.payoffDate : null
-  const interestSaved = hasDebts ? baseline.totalInterest - scenario.totalInterest : null
+  const debtFreeDate = hasDebts && scenario.paidOff ? scenario.payoffDate : null
+  // Comparisons against a baseline that never pays off are meaningless
+  const interestSaved = hasDebts && baseline.paidOff && scenario.paidOff
+    ? baseline.totalInterest - scenario.totalInterest
+    : null
   const savingsAtDebtFree = useMemo(() => {
     if (!savingsScenario || !hasDebts) return null
     const idx = Math.min(scenario.months, savingsScenario.timeline.length - 1)
@@ -794,7 +797,17 @@ export function Scenarios() {
                       ? debtFreeDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })
                       : "---"}
                   </p>
-                  {hasDebts && baseline.months !== scenario.months && (
+                  {hasDebts && !scenario.paidOff && (
+                    <p className="text-xs text-destructive">
+                      Never pays off at this pace — payments don't cover interest
+                    </p>
+                  )}
+                  {hasDebts && scenario.paidOff && !baseline.paidOff && (
+                    <p className="text-xs text-success">
+                      Pays off — the current pace alone never would
+                    </p>
+                  )}
+                  {hasDebts && baseline.paidOff && scenario.paidOff && baseline.months !== scenario.months && (
                     <p className={cn(
                       "text-xs",
                       scenario.months < baseline.months ? "text-success" : "text-destructive"

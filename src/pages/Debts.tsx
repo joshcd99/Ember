@@ -781,18 +781,27 @@ export function Debts() {
                   <CardDescription>{meta.description}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Debt-free by</span>
-                    <span className="font-semibold">{formatDate(result.payoffDate)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Total interest</span>
-                    <span className="font-semibold">{formatCurrency(result.totalInterest)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Months</span>
-                    <span className="font-semibold">{result.months}</span>
-                  </div>
+                  {!result.paidOff ? (
+                    <p className="text-sm text-destructive">
+                      Never pays off at this rate — the payments don't cover the
+                      monthly interest, so the balance keeps growing.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Debt-free by</span>
+                        <span className="font-semibold">{formatDate(result.payoffDate)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Total interest</span>
+                        <span className="font-semibold">{formatCurrency(result.totalInterest)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Months</span>
+                        <span className="font-semibold">{result.months}</span>
+                      </div>
+                    </>
+                  )}
                   {result.debtPayoffOrder.length > 0 && (
                     <div className="pt-2 border-t border-border mt-2">
                       <p className="text-xs text-muted-foreground mb-2">Payoff order:</p>

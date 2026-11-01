@@ -70,7 +70,8 @@ export function Dashboard() {
   const payoffResult = hasDebts
     ? calculatePayoff(debts, savedStrategy, extraMonthly, null, householdSettings?.custom_debt_order)
     : null
-  const debtFreeDate = payoffResult?.payoffDate
+  // No date when payments never retire the balance (50-year cap hit)
+  const debtFreeDate = payoffResult?.paidOff ? payoffResult.payoffDate : null
 
   const streak = getCheckinStreak(checkins)
   const impactAction = getHighestImpactAction(debts)
@@ -319,7 +320,7 @@ export function Dashboard() {
         {/* Debt-free countdown */}
         <DebtFreeCountdown
           debtFreeDate={debtFreeDate ?? null}
-          months={payoffResult?.months ?? null}
+          months={payoffResult?.paidOff ? payoffResult.months : null}
           totalDebt={totalDebt}
           startingDebt={startingDebt}
           progressPercent={progressPercent}

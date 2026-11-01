@@ -15,6 +15,9 @@ export interface PayoffResult {
   strategy: Strategy
   months: number
   totalInterest: number
+  /** False when the 50-year cap was hit with balance remaining — payments
+   *  don't cover interest, so months/totalInterest/payoffDate are meaningless */
+  paidOff: boolean
   payoffDate: Date
   timeline: MonthSnapshot[]
   debtPayoffOrder: { id: string; name: string; debtType: DebtType; month: number }[]
@@ -91,6 +94,7 @@ export function calculatePayoff(
       strategy,
       months: 0,
       totalInterest: 0,
+      paidOff: true,
       payoffDate: new Date(),
       timeline: [],
       debtPayoffOrder: [],
@@ -250,6 +254,7 @@ export function calculatePayoff(
     strategy,
     months: month,
     totalInterest: Math.round(totalInterest * 100) / 100,
+    paidOff: Object.values(balances).reduce((s, b) => s + b, 0) <= 0.01,
     payoffDate,
     timeline,
     debtPayoffOrder,

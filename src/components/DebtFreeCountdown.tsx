@@ -128,6 +128,13 @@ export function DebtFreeCountdown({ debtFreeDate, months, totalDebt, startingDeb
               {strategyLabel ? ` · ${strategyLabel}` : months ? ` · ${months} months at current pace` : ""}
             </p>
           </>
+        ) : totalDebt > 0 ? (
+          <>
+            <p className="font-display text-2xl">—</p>
+            <p className="text-xs text-warning">
+              Current payments don't cover the interest — the balance grows at this pace
+            </p>
+          </>
         ) : (
           <>
             <p className="font-display text-2xl">—</p>
