@@ -52,6 +52,9 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
   const [promoEndDate, setPromoEndDate] = useState("")
   const [promoBalance, setPromoBalance] = useState("")
   const [deferredInterestAccrued, setDeferredInterestAccrued] = useState("")
+  const [defermentExpanded, setDefermentExpanded] = useState(false)
+  const [defermentEndDate, setDefermentEndDate] = useState("")
+  const [defermentAccrues, setDefermentAccrues] = useState(true)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -73,6 +76,9 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
       setPromoEndDate(debt.promo_end_date ?? "")
       setPromoBalance(debt.promo_balance != null ? String(debt.promo_balance) : "")
       setDeferredInterestAccrued(debt.deferred_interest_accrued != null ? String(debt.deferred_interest_accrued) : "")
+      setDefermentExpanded(!!debt.deferment_end_date)
+      setDefermentEndDate(debt.deferment_end_date ?? "")
+      setDefermentAccrues(debt.deferment_interest_accrues ?? true)
     } else {
       setName(initial?.name ?? "")
       setDebtType(initial?.debt_type ?? "other")
@@ -88,6 +94,9 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
       setPromoEndDate("")
       setPromoBalance("")
       setDeferredInterestAccrued("")
+      setDefermentExpanded(false)
+      setDefermentEndDate("")
+      setDefermentAccrues(true)
     }
     setConfirmDelete(false)
   }, [debt, initial, open])
@@ -115,6 +124,13 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
           ...(promoType === "deferred_interest" && deferredInterestAccrued
             ? { deferred_interest_accrued: Number(deferredInterestAccrued) } : {}),
         } : {}),
+        // Deferment: only send when set on add (older rows pattern); always
+        // send on edit so clearing the section clears the fields
+        ...(defermentExpanded && defermentEndDate
+          ? { deferment_end_date: defermentEndDate, deferment_interest_accrues: defermentAccrues }
+          : isEdit
+            ? { deferment_end_date: null, deferment_interest_accrues: true }
+            : {}),
       }
       if (isEdit) {
         await updateDebt(debt.id, data)
@@ -150,11 +166,13 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
   // Individual payoff projection chart (edit mode only)
   const chartData = isEdit ? buildPayoffChart(debt) : []
 
+  const inDeferment = defermentExpanded && !!defermentEndDate
   const valid =
     name.trim() &&
     Number(currentBalance) > 0 &&
     Number(interestRate) >= 0 &&
-    Number(minimumPayment) > 0 &&
+    // A deferred loan has no required payment yet
+    (Number(minimumPayment) > 0 || inDeferment) &&
     Number(dueDay) >= 1 &&
     Number(dueDay) <= 31
 
@@ -226,9 +244,10 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
               label="Minimum Payment"
               type="number"
               prefix="$"
-              placeholder="95"
+              placeholder={inDeferment ? "0" : "95"}
               value={minimumPayment}
               onChange={setMinimumPayment}
+              hint={inDeferment ? "After deferment ends" : undefined}
             />
             <Field
               label="Due Day"
@@ -378,6 +397,79 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
                     hint="From your statement"
                   />
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Deferment section (e.g. student loans) */}
+          <div className="border border-border rounded-lg">
+            <button
+              type="button"
+              onClick={() => setDefermentExpanded(!defermentExpanded)}
+              className="flex items-center justify-between w-full px-3 py-2.5 text-sm text-left hover:bg-muted/50 rounded-lg transition-colors"
+            >
+              <span className={defermentExpanded ? "font-medium" : "text-muted-foreground"}>
+                {defermentExpanded ? "Deferment" : "+ This loan is in deferment"}
+              </span>
+              <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", defermentExpanded && "rotate-180")} />
+            </button>
+
+            {defermentExpanded && (
+              <div className="px-3 pb-3 space-y-3 border-t border-border pt-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Deferment Ends</label>
+                  <DatePicker
+                    value={defermentEndDate}
+                    onChange={setDefermentEndDate}
+                    placeholder="Select end date"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    No payments are scheduled until this date — payoff projections,
+                    cash flow, and the calendar all skip this loan until then.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Interest During Deferment</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDefermentAccrues(true)}
+                      className={cn(
+                        "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                        defermentAccrues
+                          ? "border-warning bg-warning/10 text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:border-warning/50"
+                      )}
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
+                      <div>
+                        <div className="font-medium">Accrues</div>
+                        <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                          Unsubsidized loans: the balance grows while deferred.
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDefermentAccrues(false)}
+                      className={cn(
+                        "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                        !defermentAccrues
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                      )}
+                    >
+                      <Info className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                      <div>
+                        <div className="font-medium">Paused</div>
+                        <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                          Subsidized federal loans: interest is covered for you.
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

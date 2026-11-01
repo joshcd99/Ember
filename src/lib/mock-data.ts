@@ -2,6 +2,7 @@ import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, Bi
 import { recurrenceToMonthlyMultiplier, getNextDueDate, normalizeRecurrence } from "@/lib/recurrence"
 import { startOfDay, addDays, addWeeks, addMonths, addYears } from "date-fns"
 import { DEFAULT_BILL_CATEGORIES } from "@/lib/bill-categories"
+import { isInDeferment } from "@/lib/payoff-engine"
 
 export const mockDebts: Debt[] = [
   {
@@ -201,7 +202,10 @@ export function getMonthlyBills(bills: Bill[]): number {
 }
 
 export function getMonthlyMinimums(debts: Debt[]): number {
-  return debts.reduce((sum, d) => sum + (d.actual_payment ?? d.minimum_payment), 0)
+  return debts.reduce((sum, d) => {
+    if (isInDeferment(d)) return sum
+    return sum + (d.actual_payment ?? d.minimum_payment)
+  }, 0)
 }
 
 export function getCheckinStreak(checkins: Checkin[]): number {

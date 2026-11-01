@@ -36,7 +36,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useAppData } from "@/contexts/DataContext"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
-import { calculatePayoff, sortDebts, getPromoPrioritizedDebts, type Strategy } from "@/lib/payoff-engine"
+import { calculatePayoff, sortDebts, getPromoPrioritizedDebts, isInDeferment, type Strategy } from "@/lib/payoff-engine"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } from "@/lib/utils"
 import { downloadCSV } from "@/lib/csv"
@@ -396,6 +396,11 @@ export function Debts() {
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: DEBT_TYPE_CHART_COLORS[type] }} />
                   {DEBT_TYPE_META[type].label}
                 </span>
+              )}
+              {!isPaidOff && isInDeferment(debt) && (
+                <Badge variant="secondary">
+                  Deferred until {new Date(debt.deferment_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                </Badge>
               )}
               {!isPaidOff && (
                 <Badge variant={aprBadgeVariant(debt.interest_rate)}>

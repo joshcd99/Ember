@@ -52,13 +52,14 @@ export function CashFlowRegister() {
       }
     }
 
-    // Debt payments (on due_day)
+    // Debt payments (on due_day; none while the debt is in deferment)
     for (const debt of debts) {
       const dueDay = debt.due_day
       const payment = debt.actual_payment ?? debt.minimum_payment
       const maxDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
       const day = Math.min(dueDay, maxDay)
       const date = new Date(now.getFullYear(), now.getMonth(), day)
+      if (debt.deferment_end_date && date < new Date(debt.deferment_end_date + "T00:00")) continue
       if (date >= monthStart && date < monthEnd) {
         events.push({ date, label: `${debt.name} (payment)`, type: "debt", amount: -payment })
       }

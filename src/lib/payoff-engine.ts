@@ -22,6 +22,12 @@ export interface PayoffResult {
   categoryPayoffMonths: Record<string, number>
 }
 
+/** True while a debt's deferment period (e.g. student loans) is still in the future */
+export function isInDeferment(d: Debt, asOf: Date = new Date()): boolean {
+  if (!d.deferment_end_date) return false
+  return new Date(d.deferment_end_date + "T00:00") > asOf
+}
+
 /**
  * Checks if a debt is an at-risk deferred interest promo that should be
  * prioritized above normal strategy ordering.
@@ -98,11 +104,22 @@ export function calculatePayoff(
   const regularRates: Record<string, number> = {} // rate after promo ends
   const promoEndMonths: Record<string, number> = {} // month index when promo expires
   const minimums: Record<string, number> = {}
+  const defermentEndMonths: Record<string, number> = {} // month index when deferment ends (0 = none)
+  const defermentAccrues: Record<string, boolean> = {}
 
   const now = new Date()
   for (const d of debts) {
     balances[d.id] = d.current_balance
     regularRates[d.id] = d.interest_rate / 12
+
+    // Deferment: no required payments (and optionally no interest) until the end date
+    if (d.deferment_end_date) {
+      const endDate = new Date(d.deferment_end_date + "T00:00")
+      defermentEndMonths[d.id] = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (30.44 * 24 * 60 * 60 * 1000)))
+    } else {
+      defermentEndMonths[d.id] = 0
+    }
+    defermentAccrues[d.id] = d.deferment_interest_accrues ?? true
 
     // For active promos, use promo_apr during the promo period
     if (d.promo_type && d.promo_apr != null && d.promo_end_date) {
@@ -158,9 +175,11 @@ export function calculatePayoff(
       balances[lumpSum.debtId] = Math.max(0, balances[lumpSum.debtId] - lumpSum.amount)
     }
 
-    // Accrue interest (use promo rate during promo period, regular rate after)
+    // Accrue interest (use promo rate during promo period, regular rate after;
+    // paused entirely during a non-accruing deferment, e.g. subsidized loans)
     for (const id of Object.keys(balances)) {
       if (balances[id] > 0) {
+        if (month <= defermentEndMonths[id] && !defermentAccrues[id]) continue
         const rate = month <= promoEndMonths[id] ? promoRates[id] : regularRates[id]
         const interest = balances[id] * rate
         balances[id] += interest
@@ -168,10 +187,10 @@ export function calculatePayoff(
       }
     }
 
-    // Pay minimums on all debts
+    // Pay minimums on all debts (none required while a debt is in deferment)
     let extraAvailable = strategy === "minimums" ? 0 : extraMonthly
     for (const id of Object.keys(balances)) {
-      if (balances[id] > 0) {
+      if (balances[id] > 0 && month > defermentEndMonths[id]) {
         const payment = Math.min(balances[id], minimums[id])
         balances[id] -= payment
       }
@@ -240,10 +259,12 @@ export function getHighestImpactAction(debts: Debt[]): {
   extraAmount: number
   interestSaved: number
 } | null {
-  if (debts.length === 0) return null
+  // Paying extra on a paused-interest deferment saves nothing right now
+  const candidates = debts.filter(d => !(isInDeferment(d) && d.deferment_interest_accrues === false))
+  if (candidates.length === 0) return null
 
   // The highest-rate debt saves the most interest per dollar applied
-  const sorted = [...debts].sort((a, b) => b.interest_rate - a.interest_rate)
+  const sorted = [...candidates].sort((a, b) => b.interest_rate - a.interest_rate)
   const target = sorted[0]
   const extraAmount = 50 // suggest $50 extra
 

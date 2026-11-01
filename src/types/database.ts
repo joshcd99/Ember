@@ -46,6 +46,10 @@ export interface Debt {
   actual_payment?: number | null
   // User-entered deferred interest already accrued (from statement)
   deferred_interest_accrued?: number | null
+  // Deferment (e.g. student loans): no payments until this date;
+  // interest accrues (unsubsidized) or is paused (subsidized)
+  deferment_end_date?: string | null
+  deferment_interest_accrues?: boolean | null
 }
 
 export interface IncomeSource {
@@ -237,6 +241,8 @@ export interface Database {
           regular_apr?: number | null
           actual_payment?: number | null
           deferred_interest_accrued?: number | null
+          deferment_end_date?: string | null
+          deferment_interest_accrues?: boolean | null
         }
         Update: {
           id?: string
@@ -257,6 +263,8 @@ export interface Database {
           regular_apr?: number | null
           actual_payment?: number | null
           deferred_interest_accrued?: number | null
+          deferment_end_date?: string | null
+          deferment_interest_accrues?: boolean | null
         }
         Relationships: []
       }
