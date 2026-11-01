@@ -10,6 +10,20 @@ function AccountRow({ account }: { account: SavingsAccount }) {
   const { updateCashAccount } = useAppData()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(account.name)
+  const [editingOwner, setEditingOwner] = useState(false)
+  const [ownerDraft, setOwnerDraft] = useState(account.owner ?? "")
+
+  const saveOwner = async () => {
+    setEditingOwner(false)
+    const trimmed = ownerDraft.trim()
+    if (trimmed === (account.owner ?? "")) return
+    try {
+      await updateCashAccount(account.id, { owner: trimmed || null })
+    } catch (err) {
+      console.error("CashAccountsCard: owner update failed", err)
+      setOwnerDraft(account.owner ?? "")
+    }
+  }
 
   const save = async () => {
     setEditing(false)
@@ -44,18 +58,53 @@ function AccountRow({ account }: { account: SavingsAccount }) {
           autoFocus
         />
       ) : (
-        <button
-          type="button"
-          onClick={() => {
-            setDraft(account.name)
-            setEditing(true)
-          }}
-          className="group flex items-center gap-1.5 text-sm text-left min-w-0"
-          title="Rename account"
-        >
-          <span className="truncate">{account.name}</span>
-          <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(account.name)
+              setEditing(true)
+            }}
+            className="group flex items-center gap-1.5 text-sm text-left min-w-0"
+            title="Rename account"
+          >
+            <span className="truncate">{account.name}</span>
+            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          </button>
+          {editingOwner ? (
+            <Input
+              value={ownerDraft}
+              onChange={(e) => setOwnerDraft(e.target.value)}
+              onBlur={saveOwner}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+                if (e.key === "Escape") {
+                  setOwnerDraft(account.owner ?? "")
+                  setEditingOwner(false)
+                }
+              }}
+              className="h-6 w-24 text-xs shrink-0"
+              placeholder="Owner"
+              autoFocus
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setOwnerDraft(account.owner ?? "")
+                setEditingOwner(true)
+              }}
+              className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                account.owner
+                  ? "bg-muted text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground/50 hover:text-muted-foreground border border-dashed border-border"
+              }`}
+              title="Set owner"
+            >
+              {account.owner || "+ owner"}
+            </button>
+          )}
+        </div>
       )}
       <div className="text-right shrink-0">
         <p className="text-sm font-medium">{formatCurrencyExact(account.current_balance)}</p>

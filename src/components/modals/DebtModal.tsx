@@ -35,10 +35,17 @@ interface DebtModalProps {
 }
 
 export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModalProps) {
-  const { addDebt, updateDebt, deleteDebt } = useAppData()
+  const { addDebt, updateDebt, deleteDebt, debts, cashAccounts } = useAppData()
   const isEdit = !!debt
 
+  // Suggestions for the owner field from labels already in use
+  const ownerSuggestions = Array.from(new Set(
+    [...debts.map(d => d.owner), ...cashAccounts.map(a => a.owner), "Joint"]
+      .filter((o): o is string => !!o?.trim())
+  ))
+
   const [name, setName] = useState("")
+  const [owner, setOwner] = useState("")
   const [currentBalance, setCurrentBalance] = useState("")
   const [startingBalance, setStartingBalance] = useState("")
   const [interestRate, setInterestRate] = useState("")
@@ -61,6 +68,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
   useEffect(() => {
     if (debt) {
       setName(debt.name)
+      setOwner(debt.owner ?? "")
       setDebtType(debt.debt_type ?? "other")
       setCurrentBalance(String(debt.current_balance))
       setStartingBalance(String(debt.starting_balance))
@@ -81,6 +89,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
       setDefermentAccrues(debt.deferment_interest_accrues ?? true)
     } else {
       setName(initial?.name ?? "")
+      setOwner(initial?.owner ?? "")
       setDebtType(initial?.debt_type ?? "other")
       setCurrentBalance(initial?.current_balance != null ? String(initial.current_balance) : "")
       setStartingBalance(initial?.starting_balance != null ? String(initial.starting_balance) : "")
@@ -131,6 +140,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
           : isEdit
             ? { deferment_end_date: null, deferment_interest_accrues: true }
             : {}),
+        ...(owner.trim() ? { owner: owner.trim() } : isEdit ? { owner: null } : {}),
       }
       if (isEdit) {
         await updateDebt(debt.id, data)
@@ -184,7 +194,21 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
         </DialogHeader>
 
         <div className="space-y-4">
-          <Field label="Name" placeholder="e.g., Chase Visa" value={name} onChange={setName} />
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Name" placeholder="e.g., Chase Visa" value={name} onChange={setName} />
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Owner</label>
+              <Input
+                list="debt-owner-suggestions"
+                placeholder="Optional — e.g., Joint"
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+              />
+              <datalist id="debt-owner-suggestions">
+                {ownerSuggestions.map(o => <option key={o} value={o} />)}
+              </datalist>
+            </div>
+          </div>
 
           {/* Debt type selector */}
           <div className="space-y-1.5">

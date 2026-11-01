@@ -54,7 +54,7 @@ interface DataActions {
   // Savings / cash accounts
   updateSavingsAccount: (updates: Partial<Pick<SavingsAccount, "current_balance" | "apy">>) => Promise<void>
   addCashAccount: (name: string, kind: CashAccountKind, balance: number) => Promise<SavingsAccount | null>
-  updateCashAccount: (id: string, updates: Partial<Pick<SavingsAccount, "name" | "current_balance" | "apy">>) => Promise<void>
+  updateCashAccount: (id: string, updates: Partial<Pick<SavingsAccount, "name" | "current_balance" | "apy" | "owner">>) => Promise<void>
   // Refresh
   refresh: () => Promise<void>
 }
@@ -390,7 +390,7 @@ export function useData(): AppData {
     await fetchAll()
   }
 
-  const updateCashAccount = async (id: string, updates: Partial<Pick<SavingsAccount, "name" | "current_balance" | "apy">>) => {
+  const updateCashAccount = async (id: string, updates: Partial<Pick<SavingsAccount, "name" | "current_balance" | "apy" | "owner">>) => {
     if (useMockMode) {
       setState(s => ({
         ...s,

@@ -134,7 +134,7 @@ export function Debts() {
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
   const [tableOpen, setTableOpen] = useState(false)
-  const [debtSort, setDebtSort] = useState<"category" | "name" | "balance" | "progress" | "rate">("category")
+  const [debtSort, setDebtSort] = useState<"category" | "name" | "balance" | "progress" | "rate" | "owner">("category")
   const [celebratingDebt, setCelebratingDebt] = useState<Debt | null>(null)
   const prevDebtsRef = useRef<Debt[]>([])
 
@@ -420,6 +420,11 @@ export function Debts() {
                   {DEBT_TYPE_META[type].label}
                 </span>
               )}
+              {!isPaidOff && debt.owner && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground">
+                  {debt.owner}
+                </span>
+              )}
               {!isPaidOff && isInDeferment(debt) && (
                 <Badge variant="secondary">
                   Deferred until {new Date(debt.deferment_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })}
@@ -608,6 +613,7 @@ export function Debts() {
           { value: "balance", label: "Balance" },
           { value: "progress", label: "Progress" },
           { value: "rate", label: "Rate" },
+          { value: "owner", label: "Owner" },
         ] as const).map(opt => (
           <button
             key={opt.value}
@@ -662,6 +668,8 @@ export function Debts() {
             case "balance": return b.current_balance - a.current_balance
             case "progress": return debtProgress(b) - debtProgress(a)
             case "rate": return b.interest_rate - a.interest_rate
+            // Unowned debts sort last
+            case "owner": return (a.owner ?? "￿").localeCompare(b.owner ?? "￿") || a.name.localeCompare(b.name)
             default: return 0
           }
         })

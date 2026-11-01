@@ -50,6 +50,8 @@ export interface Debt {
   // interest accrues (unsubsidized) or is paused (subsidized)
   deferment_end_date?: string | null
   deferment_interest_accrues?: boolean | null
+  // Free-text owner label (member name or "Joint"); null = unspecified
+  owner?: string | null
 }
 
 export interface IncomeSource {
@@ -181,6 +183,7 @@ export interface SavingsAccount {
   name: string
   kind: CashAccountKind
   created_at: string
+  owner?: string | null
 }
 
 export interface Database {
@@ -243,6 +246,7 @@ export interface Database {
           deferred_interest_accrued?: number | null
           deferment_end_date?: string | null
           deferment_interest_accrues?: boolean | null
+          owner?: string | null
         }
         Update: {
           id?: string
@@ -265,6 +269,7 @@ export interface Database {
           deferred_interest_accrued?: number | null
           deferment_end_date?: string | null
           deferment_interest_accrues?: boolean | null
+          owner?: string | null
         }
         Relationships: []
       }
@@ -445,6 +450,7 @@ export interface Database {
           name?: string
           kind?: string
           created_at?: string
+          owner?: string | null
         }
         Update: {
           id?: string
@@ -455,6 +461,7 @@ export interface Database {
           name?: string
           kind?: string
           created_at?: string
+          owner?: string | null
         }
         Relationships: []
       }
