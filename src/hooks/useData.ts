@@ -54,6 +54,7 @@ interface DataActions {
   // Savings / cash accounts
   updateSavingsAccount: (updates: Partial<Pick<SavingsAccount, "current_balance" | "apy">>) => Promise<void>
   addCashAccount: (name: string, kind: CashAccountKind, balance: number) => Promise<SavingsAccount | null>
+  updateCashAccount: (id: string, updates: Partial<Pick<SavingsAccount, "name" | "current_balance" | "apy">>) => Promise<void>
   // Refresh
   refresh: () => Promise<void>
 }
@@ -389,6 +390,20 @@ export function useData(): AppData {
     await fetchAll()
   }
 
+  const updateCashAccount = async (id: string, updates: Partial<Pick<SavingsAccount, "name" | "current_balance" | "apy">>) => {
+    if (useMockMode) {
+      setState(s => ({
+        ...s,
+        cashAccounts: s.cashAccounts.map(a => a.id === id ? { ...a, ...updates } : a),
+        savingsAccount: s.savingsAccount?.id === id ? { ...s.savingsAccount, ...updates } : s.savingsAccount,
+      }))
+      return
+    }
+    const { error } = await supabase.from("savings_accounts").update(updates).eq("id", id)
+    if (error) throw error
+    await fetchAll()
+  }
+
   const addCashAccount = async (name: string, kind: CashAccountKind, balance: number) => {
     if (useMockMode) {
       const created: SavingsAccount = {
@@ -462,6 +477,7 @@ export function useData(): AppData {
     logCheckin,
     updateSavingsAccount,
     addCashAccount,
+    updateCashAccount,
     refresh: fetchAll,
   }
 }

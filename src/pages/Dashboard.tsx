@@ -3,6 +3,7 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { DebtFreeCountdown } from "@/components/DebtFreeCountdown"
 import { CashFlowRegister } from "@/components/CashFlowRegister"
+import { CashAccountsCard } from "@/components/CashAccountsCard"
 import {
   TrendingDown,
   Flame,
@@ -396,7 +397,8 @@ export function Dashboard() {
         )
       })()}
 
-      {/* Cash flow register */}
+      {/* Cash accounts + cash flow register */}
+      <CashAccountsCard />
       <CashFlowRegister />
 
       {/* Bottom row */}
