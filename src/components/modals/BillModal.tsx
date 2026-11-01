@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { useAppData } from "@/contexts/DataContext"
 import type { Bill, Frequency, RecurrenceUnit, RecurrenceEndType } from "@/types/database"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
@@ -43,6 +44,7 @@ export function BillModal({ open, onClose, bill, initialDate }: BillModalProps) 
 
   const [name, setName] = useState("")
   const [amount, setAmount] = useState("")
+  const [notes, setNotes] = useState("")
   const [nextDueDate, setNextDueDate] = useState("")
   const [category, setCategory] = useState("Other")
   const [saving, setSaving] = useState(false)
@@ -70,6 +72,7 @@ export function BillModal({ open, onClose, bill, initialDate }: BillModalProps) 
       setAmount(String(bill.amount))
       setNextDueDate(bill.next_due_date)
       setCategory(bill.category)
+      setNotes(bill.notes ?? "")
 
       // Populate recurrence from bill fields or legacy frequency
       if (bill.recurrence_type && bill.recurrence_unit) {
@@ -113,6 +116,7 @@ export function BillModal({ open, onClose, bill, initialDate }: BillModalProps) 
       setAmount("")
       setNextDueDate(initialDate ?? "")
       setCategory("Other")
+      setNotes("")
       setRecurrenceInterval(1)
       setRecurrenceUnit("month")
       setRecurrenceDaysOfWeek([])
@@ -171,6 +175,7 @@ export function BillModal({ open, onClose, bill, initialDate }: BillModalProps) 
       else recurrenceType = "custom"
 
       const data: Omit<Bill, "id" | "household_id"> = {
+        notes: notes.trim() || null,
         name,
         amount: Number(amount),
         frequency: recurrenceToLegacyFrequency(recurrenceInterval, recurrenceUnit),
@@ -512,6 +517,15 @@ export function BillModal({ open, onClose, bill, initialDate }: BillModalProps) 
               </div>
             )}
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Notes</label>
+          <Textarea
+            placeholder="Anything worth remembering about this expense…"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
         </div>
 
         <DialogFooter>

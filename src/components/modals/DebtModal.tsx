@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { DatePicker } from "@/components/ui/date-picker"
 import {
   LineChart,
@@ -95,6 +96,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
 
   const [name, setName] = useState("")
   const [owner, setOwner] = useState("")
+  const [notes, setNotes] = useState("")
   const [currentBalance, setCurrentBalance] = useState("")
   const [startingBalance, setStartingBalance] = useState("")
   const [interestRate, setInterestRate] = useState("")
@@ -113,6 +115,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
     if (debt) {
       setName(debt.name)
       setOwner(debt.owner ?? "")
+      setNotes(debt.notes ?? "")
       setDebtType(debt.debt_type ?? "other")
       setCurrentBalance(String(debt.current_balance))
       setStartingBalance(String(debt.starting_balance))
@@ -131,6 +134,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
     } else {
       setName(initial?.name ?? "")
       setOwner(initial?.owner ?? "")
+      setNotes("")
       setDebtType(initial?.debt_type ?? "other")
       setCurrentBalance(initial?.current_balance != null ? String(initial.current_balance) : "")
       setStartingBalance(initial?.starting_balance != null ? String(initial.starting_balance) : "")
@@ -168,6 +172,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
             ? { deferment_end_date: null, deferment_interest_accrues: true }
             : {}),
         ...(owner.trim() ? { owner: owner.trim() } : isEdit ? { owner: null } : {}),
+        ...(notes.trim() ? { notes: notes.trim() } : isEdit ? { notes: null } : {}),
       }
       let savedDebtId: string | null = null
       if (isEdit) {
@@ -580,6 +585,15 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
             )}
           </div>
           )}
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Notes</label>
+            <Textarea
+              placeholder="Anything worth remembering about this debt…"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
         </div>
 
         {/* Individual payoff chart for edit mode */}

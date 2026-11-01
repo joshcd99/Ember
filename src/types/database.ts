@@ -63,6 +63,7 @@ export interface Debt {
   deferment_interest_accrues?: boolean | null
   // Free-text owner label (member name or "Joint"); null = unspecified
   owner?: string | null
+  notes?: string | null
 }
 
 export interface IncomeSource {
@@ -82,6 +83,7 @@ export interface IncomeSource {
   recurrence_end_type?: RecurrenceEndType
   recurrence_end_date?: string | null
   recurrence_end_occurrences?: number | null
+  notes?: string | null
 }
 
 export interface BillCategory {
@@ -110,6 +112,7 @@ export interface Bill {
   recurrence_end_type?: RecurrenceEndType
   recurrence_end_date?: string | null
   recurrence_end_occurrences?: number | null
+  notes?: string | null
 }
 
 export type ExtraPaymentType = "fixed" | "percent_of_free_cash"
@@ -253,6 +256,7 @@ export interface Database {
           deferment_end_date?: string | null
           deferment_interest_accrues?: boolean | null
           owner?: string | null
+          notes?: string | null
         }
         Update: {
           id?: string
@@ -271,6 +275,7 @@ export interface Database {
           deferment_end_date?: string | null
           deferment_interest_accrues?: boolean | null
           owner?: string | null
+          notes?: string | null
         }
         Relationships: []
       }
@@ -292,6 +297,7 @@ export interface Database {
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null
+          notes?: string | null
         }
         Update: {
           id?: string
@@ -309,6 +315,7 @@ export interface Database {
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null
+          notes?: string | null
         }
         Relationships: []
       }
@@ -350,6 +357,7 @@ export interface Database {
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null
+          notes?: string | null
         }
         Update: {
           id?: string
@@ -367,6 +375,7 @@ export interface Database {
           recurrence_end_type?: string
           recurrence_end_date?: string | null
           recurrence_end_occurrences?: number | null
+          notes?: string | null
         }
         Relationships: []
       }

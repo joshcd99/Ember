@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { useAppData } from "@/contexts/DataContext"
 import type { IncomeSource, Frequency, RecurrenceUnit, RecurrenceEndType } from "@/types/database"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -42,6 +43,7 @@ export function IncomeSourceModal({ open, onClose, source, initialDate }: Income
 
   const [name, setName] = useState("")
   const [amount, setAmount] = useState("")
+  const [notes, setNotes] = useState("")
   const [nextExpectedDate, setNextExpectedDate] = useState("")
   const [isVariable, setIsVariable] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -63,6 +65,7 @@ export function IncomeSourceModal({ open, onClose, source, initialDate }: Income
       setAmount(String(source.amount))
       setNextExpectedDate(source.next_expected_date)
       setIsVariable(source.is_variable)
+      setNotes(source.notes ?? "")
 
       // Populate recurrence from source fields or legacy frequency
       if (source.recurrence_type && source.recurrence_unit) {
@@ -106,6 +109,7 @@ export function IncomeSourceModal({ open, onClose, source, initialDate }: Income
       setAmount("")
       setNextExpectedDate(initialDate ?? "")
       setIsVariable(false)
+      setNotes("")
       setRecurrenceInterval(1)
       setRecurrenceUnit("month")
       setRecurrenceDaysOfWeek([])
@@ -162,6 +166,7 @@ export function IncomeSourceModal({ open, onClose, source, initialDate }: Income
       else recurrenceType = "custom"
 
       const data: Omit<IncomeSource, "id" | "household_id"> = {
+        notes: notes.trim() || null,
         name,
         amount: Number(amount),
         frequency: recurrenceToLegacyFrequency(recurrenceInterval, recurrenceUnit),
@@ -421,6 +426,15 @@ export function IncomeSourceModal({ open, onClose, source, initialDate }: Income
               <p className="text-xs text-muted-foreground">Amount changes each period (e.g., freelance, tips)</p>
             </div>
           </label>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Notes</label>
+          <Textarea
+            placeholder="Anything worth remembering about this income…"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
         </div>
 
         <DialogFooter>
