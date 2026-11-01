@@ -161,8 +161,8 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
         due_day: Number(dueDay),
         ...(actualPayment ? { actual_payment: Number(actualPayment) } : {}),
         // Deferment: only send when set on add (older rows pattern); always
-        // send on edit so clearing the section clears the fields
-        ...(defermentExpanded && defermentEndDate
+        // send on edit so clearing the section (or changing type) clears the fields
+        ...(defermentEligible && defermentExpanded && defermentEndDate
           ? { deferment_end_date: defermentEndDate, deferment_interest_accrues: defermentAccrues }
           : isEdit
             ? { deferment_end_date: null, deferment_interest_accrues: true }
@@ -210,7 +210,9 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
   // Individual payoff projection chart (edit mode only)
   const chartData = isEdit ? buildPayoffChart(debt) : []
 
-  const inDeferment = defermentExpanded && !!defermentEndDate
+  // Deferment is a student-loan concept; the section hides for other types
+  const defermentEligible = debtType === "student_loan"
+  const inDeferment = defermentEligible && defermentExpanded && !!defermentEndDate
   const valid =
     name.trim() &&
     Number(currentBalance) > 0 &&
@@ -496,7 +498,8 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
             )}
           </div>
 
-          {/* Deferment section (e.g. student loans) */}
+          {/* Deferment section — student loans only */}
+          {defermentEligible && (
           <div className="border border-border rounded-lg">
             <button
               type="button"
@@ -568,6 +571,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Individual payoff chart for edit mode */}
