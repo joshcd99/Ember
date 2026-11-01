@@ -9,15 +9,18 @@ import { useAppData } from "@/contexts/DataContext"
 import { supabase } from "@/lib/supabase"
 import { useTheme } from "@/hooks/useTheme"
 import { useHousehold } from "@/hooks/useHousehold"
+import { useSimpleFin } from "@/hooks/useSimpleFin"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
+import { formatCurrencyExact } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus, CalendarDays } from "lucide-react"
+import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus, CalendarDays, Landmark, RefreshCw } from "lucide-react"
 
 export function Settings() {
   const { user, signOut, useMockMode } = useAuth()
-  const { billCategories, addBillCategory, deleteBillCategory, householdSettings, updateBalanceThresholds } = useAppData()
+  const { billCategories, addBillCategory, deleteBillCategory, householdSettings, updateBalanceThresholds, debts, refresh } = useAppData()
   const { theme, toggleTheme } = useTheme()
   const { household, members, updateHouseholdName, inviteMember, removeMember } = useHousehold()
+  const simplefin = useSimpleFin()
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState("")
@@ -25,6 +28,13 @@ export function Settings() {
 
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviting, setInviting] = useState(false)
+
+  // Bank sync (SimpleFIN)
+  const [setupToken, setSetupToken] = useState("")
+  const [connecting, setConnecting] = useState(false)
+  const [bankSyncError, setBankSyncError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [confirmDisconnectId, setConfirmDisconnectId] = useState<string | null>(null)
 
   // Bill category management
   const [newCatName, setNewCatName] = useState("")
@@ -69,6 +79,49 @@ export function Settings() {
       console.error("Settings: failed to delete household data", e)
       setDeleteError("Something went wrong deleting your data. Please try again.")
       setDeleting(false)
+    }
+  }
+
+  const handleConnectBank = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!setupToken.trim()) return
+    setConnecting(true)
+    setBankSyncError(null)
+    try {
+      await simplefin.connect(setupToken.trim())
+      setSetupToken("")
+    } catch (err) {
+      setBankSyncError(err instanceof Error ? err.message : "Something went wrong connecting.")
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const handleSyncNow = async () => {
+    setSyncing(true)
+    setBankSyncError(null)
+    try {
+      await simplefin.syncNow()
+      await refresh()
+    } catch (err) {
+      setBankSyncError(err instanceof Error ? err.message : "Sync failed.")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleLinkChange = async (accountId: string, value: string) => {
+    setBankSyncError(null)
+    try {
+      if (value === "savings") {
+        await simplefin.linkAccount(accountId, { debtId: null, savings: true })
+      } else if (value.startsWith("debt:")) {
+        await simplefin.linkAccount(accountId, { debtId: value.slice(5), savings: false })
+      } else {
+        await simplefin.linkAccount(accountId, { debtId: null, savings: false })
+      }
+    } catch (err) {
+      setBankSyncError(err instanceof Error ? err.message : "Could not update the link.")
     }
   }
 
@@ -230,6 +283,156 @@ export function Settings() {
                 </Button>
               </form>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bank Sync — hidden in mock mode */}
+      {!useMockMode && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Landmark className="h-5 w-5 text-muted-foreground" />
+              Bank Sync
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <p className="text-sm text-muted-foreground">
+              Ember can pull real balances and payments automatically through{" "}
+              <a
+                href="https://bridge.simplefin.org"
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline underline-offset-2"
+              >
+                SimpleFIN Bridge
+              </a>
+              . Connect your banks there, generate a setup token, and paste it below.
+              Access is read-only and refreshes about once a day.
+            </p>
+
+            {simplefin.connections.map(conn => {
+              const connAccounts = simplefin.accounts.filter(a => a.connection_id === conn.id)
+              return (
+                <div key={conn.id} className="rounded-lg border border-input p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-muted-foreground">
+                      {conn.last_synced_at
+                        ? `Last synced ${new Date(conn.last_synced_at).toLocaleString()}`
+                        : "Not synced yet"}
+                      {conn.last_sync_status === "error" && (
+                        <Badge variant="destructive" className="ml-2">Sync error</Badge>
+                      )}
+                    </div>
+                    {confirmDisconnectId === conn.id ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-7 text-xs"
+                          onClick={async () => {
+                            await simplefin.disconnect(conn.id)
+                            setConfirmDisconnectId(null)
+                          }}
+                        >
+                          Confirm
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => setConfirmDisconnectId(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => setConfirmDisconnectId(conn.id)}
+                      >
+                        Disconnect
+                      </Button>
+                    )}
+                  </div>
+                  {conn.last_sync_status === "error" && conn.last_sync_error && (
+                    <p className="text-xs text-destructive">{conn.last_sync_error}</p>
+                  )}
+                  <div className="space-y-2">
+                    {connAccounts.map(acct => (
+                      <div
+                        key={acct.id}
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm truncate">
+                            {acct.name}
+                            {acct.org_name && (
+                              <span className="text-muted-foreground"> · {acct.org_name}</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {acct.balance != null ? formatCurrencyExact(acct.balance) : "—"}
+                          </p>
+                        </div>
+                        <select
+                          value={
+                            acct.linked_debt_id
+                              ? `debt:${acct.linked_debt_id}`
+                              : acct.linked_savings
+                                ? "savings"
+                                : ""
+                          }
+                          onChange={(e) => handleLinkChange(acct.id, e.target.value)}
+                          className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground sm:max-w-[220px]"
+                        >
+                          <option value="">Not linked</option>
+                          {debts.map(d => (
+                            <option key={d.id} value={`debt:${d.id}`}>
+                              Debt: {d.name}
+                            </option>
+                          ))}
+                          <option value="savings">Savings account</option>
+                        </select>
+                      </div>
+                    ))}
+                    {connAccounts.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        No accounts yet — try syncing.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {simplefin.connections.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleSyncNow} disabled={syncing}>
+                  <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "Syncing..." : "Sync now"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Linked accounts update debt and savings balances; card payments are logged automatically.
+                </p>
+              </div>
+            )}
+
+            <form onSubmit={handleConnectBank} className="flex items-center gap-2">
+              <Input
+                value={setupToken}
+                onChange={(e) => setSetupToken(e.target.value)}
+                placeholder="Paste SimpleFIN setup token"
+                className="max-w-xs"
+                required
+              />
+              <Button type="submit" size="sm" disabled={connecting}>
+                {connecting ? "Connecting..." : "Connect"}
+              </Button>
+            </form>
+            {bankSyncError && <p className="text-sm text-destructive">{bankSyncError}</p>}
           </CardContent>
         </Card>
       )}

@@ -121,6 +121,37 @@ export interface Transaction {
   linked_income_source_id: string | null
   linked_debt_id: string | null
   is_projected: boolean
+  simplefin_txn_id?: string | null
+  source?: "manual" | "simplefin"
+}
+
+// access_url is intentionally absent: it holds the Bridge credentials and is
+// only ever read by the simplefin-sync edge function, never the client.
+export interface SimpleFinConnection {
+  id: string
+  household_id: string
+  created_by: string | null
+  created_at: string
+  last_synced_at: string | null
+  last_sync_status: "ok" | "error" | null
+  last_sync_error: string | null
+}
+
+export interface SimpleFinAccount {
+  id: string
+  household_id: string
+  connection_id: string
+  simplefin_id: string
+  name: string
+  org_name: string
+  currency: string
+  balance: number | null
+  available_balance: number | null
+  balance_date: string | null
+  linked_debt_id: string | null
+  linked_savings: boolean
+  sync_enabled: boolean
+  created_at: string
 }
 
 export interface Checkin {
