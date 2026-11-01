@@ -6,21 +6,28 @@ export interface InterestSavingsResult {
   interestSaved: number
   totalInterestMinimum: number
   totalInterestActual: number
+  /** The payment doesn't cover interest, so the balance compounds forever —
+   *  any "interest paid" figure from that path is meaningless */
+  minimumNeverPaysOff: boolean
+  actualNeverPaysOff: boolean
 }
 
 /**
- * Compute total interest paid (minimum vs actual) using a synthetic non-promo debt
- * run through calculatePayoff.
+ * Total interest paid, and whether the payment actually retires the balance,
+ * using a synthetic non-promo debt run through calculatePayoff.
  */
-function totalInterest(balance: number, rate: number, payment: number): number {
-  if (balance <= 0.01 || payment <= 0) return 0
+function totalInterestDetailed(balance: number, rate: number, payment: number): { interest: number; paidOff: boolean } {
+  if (balance <= 0.01) return { interest: 0, paidOff: true }
+  if (payment <= 0) return { interest: 0, paidOff: false }
   const synth: Debt = {
     id: "synth", household_id: "", name: "", debt_type: "other",
     current_balance: balance, starting_balance: balance,
     interest_rate: rate, minimum_payment: payment, due_day: 1,
     created_at: new Date().toISOString(), last_verified_at: null,
   }
-  return calculatePayoff([synth], "minimums").totalInterest
+  const result = calculatePayoff([synth], "minimums")
+  const end = result.timeline[result.timeline.length - 1]
+  return { interest: result.totalInterest, paidOff: (end?.totalBalance ?? 0) <= 0.01 }
 }
 
 /**
@@ -38,20 +45,26 @@ export function computeInterestSavings(debt: Debt): InterestSavingsResult {
 
   // No deferred promos: standard payoff comparison
   if (deferredPromos.length === 0 || bal <= 0.01) {
-    const totalMin = totalInterest(bal, rate, min)
-    const totalAct = totalInterest(bal, rate, actual)
+    const minR = totalInterestDetailed(bal, rate, min)
+    const actR = totalInterestDetailed(bal, rate, actual)
     return {
-      interestSaved: Math.max(0, totalMin - totalAct),
-      totalInterestMinimum: totalMin,
-      totalInterestActual: totalAct,
+      interestSaved: Math.max(0, minR.interest - actR.interest),
+      totalInterestMinimum: minR.interest,
+      totalInterestActual: actR.interest,
+      minimumNeverPaysOff: !minR.paidOff,
+      actualNeverPaysOff: !actR.paidOff,
     }
   }
 
   const promoBalTotal = Math.min(bal, deferredPromos.reduce((s, p) => s + p.promo_balance, 0))
   const nonPromoBal = Math.max(0, bal - promoBalTotal)
 
-  let totalMin = totalInterest(nonPromoBal, rate, min * (nonPromoBal / bal))
-  let totalAct = totalInterest(nonPromoBal, rate, actual * (nonPromoBal / bal))
+  const nonMinR = totalInterestDetailed(nonPromoBal, rate, min * (nonPromoBal / bal))
+  const nonActR = totalInterestDetailed(nonPromoBal, rate, actual * (nonPromoBal / bal))
+  let totalMin = nonMinR.interest
+  let totalAct = nonActR.interest
+  let minNever = !nonMinR.paidOff
+  let actNever = !nonActR.paidOff
 
   for (const p of deferredPromos) {
     const ratio = Math.min(p.promo_balance, bal) / bal
@@ -66,12 +79,16 @@ export function computeInterestSavings(debt: Debt): InterestSavingsResult {
     )
     totalMin += r.totalInterestMinimum
     totalAct += r.totalInterestActual
+    minNever = minNever || r.minimumNeverPaysOff
+    actNever = actNever || r.actualNeverPaysOff
   }
 
   return {
     interestSaved: Math.max(0, totalMin - totalAct),
     totalInterestMinimum: totalMin,
     totalInterestActual: totalAct,
+    minimumNeverPaysOff: minNever,
+    actualNeverPaysOff: actNever,
   }
 }
 
@@ -102,18 +119,21 @@ function computePromoSavings(
     return Math.max(0, balance)
   }
 
-  const pathInterest = (payment: number): number => {
+  const pathInterest = (payment: number): { interest: number; paidOff: boolean } => {
     const atDeadline = projectAtDeadline(payment)
-    if (atDeadline <= 0.01) return 0
-    return deferredAtDeadline + totalInterest(atDeadline + deferredAtDeadline, rate, payment)
+    if (atDeadline <= 0.01) return { interest: 0, paidOff: true }
+    const post = totalInterestDetailed(atDeadline + deferredAtDeadline, rate, payment)
+    return { interest: deferredAtDeadline + post.interest, paidOff: post.paidOff }
   }
 
-  const minInterest = pathInterest(minPayment)
-  const actInterest = pathInterest(actualPayment)
+  const minR = pathInterest(minPayment)
+  const actR = pathInterest(actualPayment)
 
   return {
-    interestSaved: Math.max(0, minInterest - actInterest),
-    totalInterestMinimum: minInterest,
-    totalInterestActual: actInterest,
+    interestSaved: Math.max(0, minR.interest - actR.interest),
+    totalInterestMinimum: minR.interest,
+    totalInterestActual: actR.interest,
+    minimumNeverPaysOff: !minR.paidOff,
+    actualNeverPaysOff: !actR.paidOff,
   }
 }

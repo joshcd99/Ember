@@ -359,9 +359,9 @@ export function Debts() {
     const extraAmt = payingExtra ? debt.actual_payment! - debt.minimum_payment : 0
 
     // Interest savings estimate for extra payments
-    const interestSavedEstimate = payingExtra && debt.interest_rate > 0
-      ? computeInterestSavings(debt).interestSaved
-      : 0
+    const savingsResult = payingExtra && debt.interest_rate > 0 ? computeInterestSavings(debt) : null
+    const minNeverPaysOff = savingsResult?.minimumNeverPaysOff ?? false
+    const interestSavedEstimate = minNeverPaysOff ? 0 : savingsResult?.interestSaved ?? 0
 
     // Per-promo projections under the current payment pace
     const promoProjections = isPromo ? simulatePromos(debt) : []
@@ -474,7 +474,12 @@ export function Debts() {
                   <span>Paying: {formatCurrencyExact(debt.actual_payment!)}/mo</span>
                   <span>&middot;</span>
                   <span className="text-success font-medium">+{formatCurrency(extraAmt)} extra</span>
-                  {interestSavedEstimate > 0 && (
+                  {minNeverPaysOff ? (
+                    <>
+                      <span>&middot;</span>
+                      <span className="text-success">the minimum alone would never pay this off</span>
+                    </>
+                  ) : interestSavedEstimate > 0 && (
                     <>
                       <span>&middot;</span>
                       <span className="text-success">saves ~{formatCurrency(interestSavedEstimate)} in interest</span>

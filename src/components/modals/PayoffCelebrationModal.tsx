@@ -18,7 +18,7 @@ function getCelebrationStats(debt: Debt) {
   const effectivePayment = debt.actual_payment ?? debt.minimum_payment
   const hadExtraPayments = effectivePayment > debt.minimum_payment
 
-  const { interestSaved, totalInterestActual } = computeInterestSavings(debt)
+  const { interestSaved, totalInterestActual, minimumNeverPaysOff } = computeInterestSavings(debt)
 
   // Compute months saved via payoff engine
   const minDebt: Debt = { ...debt, current_balance: debt.starting_balance }
@@ -27,8 +27,10 @@ function getCelebrationStats(debt: Debt) {
   const actualResult = calculatePayoff([actualDebt], "minimums")
 
   return {
-    interestSaved,
-    monthsSaved: Math.max(0, minResult.months - actualResult.months),
+    // When the minimum never pays off, "saved vs minimum" is a meaningless
+    // runaway number — skip those stats rather than celebrate with them
+    interestSaved: minimumNeverPaysOff ? 0 : interestSaved,
+    monthsSaved: minimumNeverPaysOff ? 0 : Math.max(0, minResult.months - actualResult.months),
     totalInterestPaid: totalInterestActual,
     totalMonthsPaid: actualResult.months,
     hadExtraPayments,

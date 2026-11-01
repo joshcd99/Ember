@@ -359,7 +359,15 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
                     created_at: new Date().toISOString(),
                   })),
               }
-              const { interestSaved } = computeInterestSavings(formDebt)
+              const { interestSaved, minimumNeverPaysOff } = computeInterestSavings(formDebt)
+              if (minimumNeverPaysOff) {
+                return (
+                  <p className="text-xs text-warning mt-1.5">
+                    At {formatCurrency(mp)}/mo the interest outpaces the payment — this balance would
+                    never pay off. Your {formatCurrency(ap)}/mo actually clears it.
+                  </p>
+                )
+              }
               if (interestSaved < 1) return null
               return (
                 <p className="text-xs text-success mt-1.5">
