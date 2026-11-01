@@ -106,6 +106,73 @@ const CADENCE_DAYS: Record<Cadence, number> = {
  * - Steady amounts (±20%) pass outright; swings up to ±45% (utilities) pass
  *   flagged as "varies", using the median.
  */
+interface GroupEval {
+  cadence: Cadence
+  amount: number
+  amountVaries: boolean
+  occurrences: number
+  lastDate: string
+  nextExpected: string
+  dayOfMonth: number | null
+  sampleDescription: string
+}
+
+/** Tests a set of same-merchant charges for a steady schedule */
+function evaluateHits(list: RawBankTxn[]): GroupEval | null {
+  // One charge per day; sorted oldest → newest
+  const byDate = new Map<string, RawBankTxn>()
+  for (const t of list) byDate.set(t.posted, t)
+  const hits = [...byDate.values()].sort((a, b) => a.posted.localeCompare(b.posted))
+  if (hits.length < 2) return null
+
+  const intervals: number[] = []
+  for (let i = 1; i < hits.length; i++) {
+    const days = (new Date(hits[i].posted).getTime() - new Date(hits[i - 1].posted).getTime()) / 86400e3
+    intervals.push(days)
+  }
+
+  const cadence = classifyInterval(median(intervals))
+  if (!cadence) return null
+
+  // Every interval must agree with the cadence (one outlier allowed for 5+ hits)
+  const misses = intervals.filter(d => classifyInterval(d) !== cadence).length
+  if (misses > (hits.length >= 5 ? 1 : 0)) return null
+
+  const amounts = hits.map(h => Math.abs(h.amount))
+  const med = median(amounts)
+  if (med <= 0) return null
+  const maxDeviation = Math.max(...amounts.map(a => Math.abs(a - med) / med))
+
+  if (hits.length === 2) {
+    // Only two sightings: trust it only for monthly+ cadences with a tight
+    // interval and near-identical amounts
+    if (cadence === "weekly" || cadence === "biweekly") return null
+    const interval = intervals[0]
+    if (cadence === "monthly" && (interval < 26 || interval > 35)) return null
+    if (maxDeviation > 0.1) return null
+  } else if (maxDeviation > 0.45) {
+    return null
+  }
+
+  const last = hits[hits.length - 1]
+  const next = new Date(last.posted + "T00:00")
+  if (cadence === "monthly") next.setMonth(next.getMonth() + 1)
+  else if (cadence === "quarterly") next.setMonth(next.getMonth() + 3)
+  else if (cadence === "yearly") next.setFullYear(next.getFullYear() + 1)
+  else next.setDate(next.getDate() + CADENCE_DAYS[cadence])
+
+  return {
+    cadence,
+    amount: Math.round(med * 100) / 100,
+    amountVaries: maxDeviation > 0.2,
+    occurrences: hits.length,
+    lastDate: last.posted,
+    nextExpected: next.toISOString().slice(0, 10),
+    dayOfMonth: cadence === "monthly" ? new Date(last.posted + "T00:00").getDate() : null,
+    sampleDescription: last.description,
+  }
+}
+
 export function detectRecurringCharges(
   txns: RawBankTxn[],
   existingBills: Bill[],
@@ -132,65 +199,40 @@ export function detectRecurringCharges(
   }
 
   const candidates: RecurringCandidate[] = []
+  const tracked = (key: string) =>
+    billKeys.some(bk => bk === key || bk.includes(key) || key.includes(bk))
 
   for (const [key, list] of groups) {
-    // One charge per day per merchant; sorted oldest → newest
-    const byDate = new Map<string, RawBankTxn>()
-    for (const t of list) byDate.set(t.posted, t)
-    const hits = [...byDate.values()].sort((a, b) => a.posted.localeCompare(b.posted))
-    if (hits.length < 2) continue
-
-    const intervals: number[] = []
-    for (let i = 1; i < hits.length; i++) {
-      const days = (new Date(hits[i].posted).getTime() - new Date(hits[i - 1].posted).getTime()) / 86400e3
-      intervals.push(days)
-    }
-
-    const cadence = classifyInterval(median(intervals))
-    if (!cadence) continue
-
-    // Every interval must agree with the cadence (one outlier allowed for 5+ hits)
-    const misses = intervals.filter(d => classifyInterval(d) !== cadence).length
-    if (misses > (hits.length >= 5 ? 1 : 0)) continue
-
-    const amounts = hits.map(h => Math.abs(h.amount))
-    const med = median(amounts)
-    if (med <= 0) continue
-    const maxDeviation = Math.max(...amounts.map(a => Math.abs(a - med) / med))
-
-    if (hits.length === 2) {
-      // Only two sightings: trust it only for monthly+ cadences with a tight
-      // interval and near-identical amounts
-      if (cadence === "weekly" || cadence === "biweekly") continue
-      const interval = intervals[0]
-      if (cadence === "monthly" && (interval < 26 || interval > 35)) continue
-      if (maxDeviation > 0.1) continue
-    } else if (maxDeviation > 0.45) {
+    const whole = evaluateHits(list)
+    if (whole) {
+      candidates.push({ key, name: titleCase(key), alreadyTracked: tracked(key), ...whole })
       continue
     }
 
-    const amountVaries = maxDeviation > 0.2
-
-    const last = hits[hits.length - 1]
-    const next = new Date(last.posted + "T00:00")
-    if (cadence === "monthly") next.setMonth(next.getMonth() + 1)
-    else if (cadence === "quarterly") next.setMonth(next.getMonth() + 3)
-    else if (cadence === "yearly") next.setFullYear(next.getFullYear() + 1)
-    else next.setDate(next.getDate() + CADENCE_DAYS[cadence])
-
-    candidates.push({
-      key,
-      name: titleCase(key),
-      sampleDescription: last.description,
-      amount: Math.round(med * 100) / 100,
-      amountVaries,
-      cadence,
-      occurrences: hits.length,
-      lastDate: last.posted,
-      nextExpected: next.toISOString().slice(0, 10),
-      dayOfMonth: cadence === "monthly" ? new Date(last.posted + "T00:00").getDate() : null,
-      alreadyTracked: billKeys.some(bk => bk === key || bk.includes(key) || key.includes(bk)),
-    })
+    // Processor descriptors (e.g. "ACH: PAYPAL") hide many merchants behind
+    // one string, so the combined group looks chaotic. Retry per exact
+    // amount: a $9.99 charge landing every month is a subscription even
+    // when the descriptor never names it.
+    if (list.length < 4) continue
+    const byAmount = new Map<string, RawBankTxn[]>()
+    for (const t of list) {
+      const amtKey = Math.abs(t.amount).toFixed(2)
+      const sub = byAmount.get(amtKey) ?? []
+      sub.push(t)
+      byAmount.set(amtKey, sub)
+    }
+    for (const [amtKey, sub] of byAmount) {
+      if (sub.length < 2) continue
+      const subEval = evaluateHits(sub)
+      if (subEval) {
+        candidates.push({
+          key: `${key}#${amtKey}`,
+          name: `${titleCase(key)} ($${amtKey})`,
+          alreadyTracked: tracked(key),
+          ...subEval,
+        })
+      }
+    }
   }
 
   return candidates.sort((a, b) => b.amount - a.amount)
