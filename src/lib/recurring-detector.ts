@@ -24,8 +24,10 @@ export interface RecurringCandidate {
   /** Cleaned merchant name, title-cased for display */
   name: string
   sampleDescription: string
-  /** Most recent charge amount (positive) */
+  /** Median charge amount (positive) */
   amount: number
+  /** Amount swings between charges (e.g. utilities) — median shown */
+  amountVaries: boolean
   cadence: Cadence
   occurrences: number
   lastDate: string
@@ -38,8 +40,18 @@ export interface RecurringCandidate {
 const NOISE_TOKENS = new Set([
   "ach", "pos", "debit", "credit", "card", "purchase", "payment", "pmt",
   "recurring", "web", "pymt", "des", "ppd", "co", "id", "online", "autopay",
-  "withdrawal", "transaction", "to", "from", "the",
+  "withdrawal", "transaction", "to", "from", "the", "inc", "llc", "com",
 ])
+
+const STATE_CODES = new Set([
+  "al","ak","az","ar","ca","co","ct","de","fl","ga","hi","ia","il","in","ks",
+  "ky","la","ma","md","me","mi","mn","mo","ms","mt","nc","nd","ne","nh","nj",
+  "nm","nv","ny","oh","ok","or","pa","ri","sc","sd","tn","tx","ut","va","vt",
+  "wa","wi","wv","wy","dc",
+])
+
+/** Card-payment style descriptors to ignore on liability accounts */
+const PAYMENT_PATTERN = /payment|pymt|\bpmt\b|autopay|auto pay|thank you|thankyou|transfer|xfer|epay|bill pay/i
 
 /** Collapse a bank descriptor down to a stable merchant key */
 export function normalizeMerchant(description: string): string {
@@ -50,6 +62,8 @@ export function normalizeMerchant(description: string): string {
     .replace(/[^a-z\s]/g, " ")
     .split(/\s+/)
     .filter(t => t.length > 1 && !NOISE_TOKENS.has(t))
+  // Trailing state codes fragment merchants ("xcel energy mn" vs "xcel energy")
+  while (tokens.length > 1 && STATE_CODES.has(tokens[tokens.length - 1])) tokens.pop()
   return tokens.slice(0, 3).join(" ")
 }
 
@@ -66,9 +80,9 @@ function median(nums: number[]): number {
 function classifyInterval(days: number): Cadence | null {
   if (days >= 5 && days <= 9) return "weekly"
   if (days >= 12 && days <= 17) return "biweekly"
-  if (days >= 25 && days <= 35) return "monthly"
+  if (days >= 24 && days <= 37) return "monthly"
   if (days >= 80 && days <= 100) return "quarterly"
-  if (days >= 350 && days <= 380) return "yearly"
+  if (days >= 345 && days <= 385) return "yearly"
   return null
 }
 
@@ -81,16 +95,35 @@ const CADENCE_DAYS: Record<Cadence, number> = {
 }
 
 /**
- * Finds charges that repeat at a steady interval with a steady amount.
- * Needs at least 3 hits for short cadences, 2 for quarterly/yearly.
+ * Finds charges that repeat at a steady interval, across checking and
+ * liability (credit card / loan) accounts.
+ *
+ * - Checking/savings: a charge is money out (amount < 0).
+ * - Credit cards/loans: institutions disagree on sign, so both signs count,
+ *   but payment-style descriptors (card payments, transfers) are skipped.
+ * - Two hits are enough for monthly+ cadences when the interval and amount
+ *   are tight; weekly/biweekly need three.
+ * - Steady amounts (±20%) pass outright; swings up to ±45% (utilities) pass
+ *   flagged as "varies", using the median.
  */
-export function detectRecurringCharges(txns: RawBankTxn[], existingBills: Bill[]): RecurringCandidate[] {
+export function detectRecurringCharges(
+  txns: RawBankTxn[],
+  existingBills: Bill[],
+  accountKinds?: Map<string, string | null>,
+): RecurringCandidate[] {
   const billKeys = existingBills.map(b => normalizeMerchant(b.name)).filter(Boolean)
 
-  // Charges only (money out), grouped by merchant
+  const isCharge = (t: RawBankTxn): boolean => {
+    const kind = accountKinds?.get(t.account_id)
+    if (kind === "credit_card" || kind === "loan") {
+      return !PAYMENT_PATTERN.test(t.description)
+    }
+    return t.amount < 0
+  }
+
   const groups = new Map<string, RawBankTxn[]>()
   for (const t of txns) {
-    if (t.amount >= 0) continue
+    if (!isCharge(t)) continue
     const key = normalizeMerchant(t.description)
     if (!key) continue
     const list = groups.get(key) ?? []
@@ -120,14 +153,23 @@ export function detectRecurringCharges(txns: RawBankTxn[], existingBills: Bill[]
     const misses = intervals.filter(d => classifyInterval(d) !== cadence).length
     if (misses > (hits.length >= 5 ? 1 : 0)) continue
 
-    // Short cadences need 3 hits to trust; long ones accept 2
-    const minHits = cadence === "quarterly" || cadence === "yearly" ? 2 : 3
-    if (hits.length < minHits) continue
-
-    // Amounts must be steady: within 20% of the median (or all identical)
     const amounts = hits.map(h => Math.abs(h.amount))
     const med = median(amounts)
-    if (med <= 0 || amounts.some(a => Math.abs(a - med) / med > 0.2)) continue
+    if (med <= 0) continue
+    const maxDeviation = Math.max(...amounts.map(a => Math.abs(a - med) / med))
+
+    if (hits.length === 2) {
+      // Only two sightings: trust it only for monthly+ cadences with a tight
+      // interval and near-identical amounts
+      if (cadence === "weekly" || cadence === "biweekly") continue
+      const interval = intervals[0]
+      if (cadence === "monthly" && (interval < 26 || interval > 35)) continue
+      if (maxDeviation > 0.1) continue
+    } else if (maxDeviation > 0.45) {
+      continue
+    }
+
+    const amountVaries = maxDeviation > 0.2
 
     const last = hits[hits.length - 1]
     const next = new Date(last.posted + "T00:00")
@@ -140,7 +182,8 @@ export function detectRecurringCharges(txns: RawBankTxn[], existingBills: Bill[]
       key,
       name: titleCase(key),
       sampleDescription: last.description,
-      amount: Math.round(Math.abs(last.amount) * 100) / 100,
+      amount: Math.round(med * 100) / 100,
+      amountVaries,
       cadence,
       occurrences: hits.length,
       lastDate: last.posted,

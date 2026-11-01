@@ -41,6 +41,7 @@ export function RecurringScanner() {
   const [error, setError] = useState<string | null>(null)
   const [candidates, setCandidates] = useState<RecurringCandidate[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [scanMeta, setScanMeta] = useState<{ count: number; since: string } | null>(null)
 
   const scan = async () => {
     setScanning(true)
@@ -56,15 +57,25 @@ export function RecurringScanner() {
 
       const since = new Date()
       since.setDate(since.getDate() - 365)
-      const { data, error: qError } = await supabase
-        .from("simplefin_transactions")
-        .select("id, account_id, posted, amount, description")
-        .gte("posted", since.toISOString().slice(0, 10))
-        .order("posted", { ascending: true })
-        .limit(5000)
-      if (qError) throw qError
+      const [txRes, acctRes] = await Promise.all([
+        supabase
+          .from("simplefin_transactions")
+          .select("id, account_id, posted, amount, description")
+          .gte("posted", since.toISOString().slice(0, 10))
+          .order("posted", { ascending: true })
+          .limit(5000),
+        supabase.from("simplefin_accounts").select("id, account_kind"),
+      ])
+      if (txRes.error) throw txRes.error
 
-      setCandidates(detectRecurringCharges((data as RawBankTxn[]) ?? [], bills))
+      const txns = (txRes.data as RawBankTxn[]) ?? []
+      // Account types matter: charge sign conventions differ between
+      // checking and credit card / loan accounts
+      const kinds = new Map<string, string | null>(
+        ((acctRes.data as { id: string; account_kind: string | null }[]) ?? []).map(a => [a.id, a.account_kind])
+      )
+      setScanMeta(txns.length > 0 ? { count: txns.length, since: txns[0].posted } : null)
+      setCandidates(detectRecurringCharges(txns, bills, kinds))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed.")
     } finally {
@@ -165,13 +176,24 @@ export function RecurringScanner() {
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
                       {CADENCE_LABELS[c.cadence]} · {c.occurrences}× · last {formatDate(c.lastDate)}
+                      {c.amountVaries && " · amount varies"}
                     </p>
                   </div>
-                  <span className="text-sm font-semibold shrink-0">{formatCurrencyExact(c.amount)}</span>
+                  <span className="text-sm font-semibold shrink-0">
+                    {c.amountVaries ? "~" : ""}{formatCurrencyExact(c.amount)}
+                  </span>
                 </label>
               ))}
             </div>
           ) : null}
+
+          {!scanning && scanMeta && (
+            <p className="text-xs text-muted-foreground">
+              Scanned {scanMeta.count.toLocaleString()} bank transactions since {formatDate(scanMeta.since)}.
+              {new Date(scanMeta.since) > new Date(Date.now() - 100 * 86400e3) &&
+                " Your bank only provided recent history — more patterns will surface as syncs accumulate."}
+            </p>
+          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
