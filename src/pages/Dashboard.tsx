@@ -29,10 +29,11 @@ import { calculatePayoff, getHighestImpactAction, type Strategy } from "@/lib/pa
 import { formatCurrency, formatDate, formatCountdown } from "@/lib/utils"
 import { DEBT_TYPE_META, DEBT_TYPE_CHART_COLORS } from "@/lib/debt-types"
 import {
-  hasActivePromo,
+  hasDeferredPromo,
   willMakeDeadline,
   interestAtRisk,
   extraNeededToMakeDeadline,
+  earliestPromoEndDate,
 } from "@/lib/promo-engine"
 import type { DebtType } from "@/types/database"
 import { differenceInDays } from "date-fns"
@@ -170,8 +171,8 @@ export function Dashboard() {
       {/* Promo deadline warning */}
       {(() => {
         const atRiskPromos = debts
-          .filter(d => hasActivePromo(d) && !willMakeDeadline(d) && d.promo_type === "deferred_interest")
-          .sort((a, b) => (a.promo_end_date ?? "").localeCompare(b.promo_end_date ?? ""))
+          .filter(d => hasDeferredPromo(d) && !willMakeDeadline(d))
+          .sort((a, b) => (earliestPromoEndDate(a) ?? "").localeCompare(earliestPromoEndDate(b) ?? ""))
 
         if (atRiskPromos.length === 0) return null
 
@@ -179,8 +180,9 @@ export function Dashboard() {
           const d = atRiskPromos[0]
           const risk = interestAtRisk(d)
           const extraNeeded = extraNeededToMakeDeadline(d)
-          const endLabel = d.promo_end_date
-            ? new Date(d.promo_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          const endDate = earliestPromoEndDate(d)
+          const endLabel = endDate
+            ? new Date(endDate + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
             : ""
           return (
             <Card className="border-warning/30 bg-warning/5">

@@ -1,5 +1,5 @@
 import type { Debt, DebtType } from "@/types/database"
-import { hasActivePromo, willMakeDeadline, interestAtRisk } from "@/lib/promo-engine"
+import { activePromos, hasDeferredPromo, willMakeDeadline, interestAtRisk, paymentPeriodsLeftFor } from "@/lib/promo-engine"
 
 export type Strategy = "avalanche" | "snowball" | "minimums" | "custom"
 
@@ -33,7 +33,7 @@ export function isInDeferment(d: Debt, asOf: Date = new Date()): boolean {
  * prioritized above normal strategy ordering.
  */
 function isAtRiskDeferredPromo(d: Debt): boolean {
-  return hasActivePromo(d) && d.promo_type === "deferred_interest" && !willMakeDeadline(d)
+  return hasDeferredPromo(d) && !willMakeDeadline(d)
 }
 
 export function sortDebts(debts: Debt[], strategy: Strategy, customOrder?: string[]): Debt[] {
@@ -100,9 +100,10 @@ export function calculatePayoff(
 
   const ordered = sortDebts(debts, strategy, customOrder)
   const balances: Record<string, number> = {}
-  const promoRates: Record<string, number> = {} // rate during promo period
-  const regularRates: Record<string, number> = {} // rate after promo ends
-  const promoEndMonths: Record<string, number> = {} // month index when promo expires
+  const regularRates: Record<string, number> = {} // rate on non-promo balance
+  // Per-debt promo segments: that slice of the balance accrues at its own
+  // promo APR until its end month, then folds into the regular rate
+  const promoSegs: Record<string, { balance: number; rate: number; endMonth: number }[]> = {}
   const minimums: Record<string, number> = {}
   const defermentEndMonths: Record<string, number> = {} // month index when deferment ends (0 = none)
   const defermentAccrues: Record<string, boolean> = {}
@@ -121,16 +122,11 @@ export function calculatePayoff(
     }
     defermentAccrues[d.id] = d.deferment_interest_accrues ?? true
 
-    // For active promos, use promo_apr during the promo period
-    if (d.promo_type && d.promo_apr != null && d.promo_end_date) {
-      const endDate = new Date(d.promo_end_date + "T00:00")
-      const monthsUntilEnd = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (30.44 * 24 * 60 * 60 * 1000)))
-      promoRates[d.id] = d.promo_apr / 12
-      promoEndMonths[d.id] = monthsUntilEnd
-    } else {
-      promoRates[d.id] = d.interest_rate / 12
-      promoEndMonths[d.id] = 0 // no promo, use regular rate immediately
-    }
+    promoSegs[d.id] = activePromos(d, now).map(p => ({
+      balance: p.promo_balance,
+      rate: p.promo_apr / 12,
+      endMonth: paymentPeriodsLeftFor(p, now),
+    }))
 
     minimums[d.id] = d.minimum_payment
   }
@@ -175,13 +171,20 @@ export function calculatePayoff(
       balances[lumpSum.debtId] = Math.max(0, balances[lumpSum.debtId] - lumpSum.amount)
     }
 
-    // Accrue interest (use promo rate during promo period, regular rate after;
-    // paused entirely during a non-accruing deferment, e.g. subsidized loans)
+    // Accrue interest: promo segments at their own APRs while active, the
+    // rest of the balance at the regular rate. Paused entirely during a
+    // non-accruing deferment (e.g. subsidized loans).
     for (const id of Object.keys(balances)) {
       if (balances[id] > 0) {
         if (month <= defermentEndMonths[id] && !defermentAccrues[id]) continue
-        const rate = month <= promoEndMonths[id] ? promoRates[id] : regularRates[id]
-        const interest = balances[id] * rate
+        const segs = promoSegs[id].filter(s => month <= s.endMonth)
+        const segTotal = segs.reduce((s, seg) => s + seg.balance, 0)
+        // When the balance has been paid below the promo total, scale the
+        // promo share down so segments never exceed what's actually owed
+        const scale = segTotal > 0 ? Math.min(1, balances[id] / segTotal) : 0
+        const promoInterest = segs.reduce((s, seg) => s + seg.balance * scale * seg.rate, 0)
+        const nonPromo = Math.max(0, balances[id] - segTotal)
+        const interest = promoInterest + nonPromo * regularRates[id]
         balances[id] += interest
         totalInterest += interest
       }

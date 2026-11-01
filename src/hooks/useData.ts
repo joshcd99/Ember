@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
-import type { Debt, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, CashAccountKind, BillCategory, HouseholdSettings, ExtraPaymentType } from "@/types/database"
+import type { Debt, DebtPromo, PromoType, IncomeSource, Bill, Transaction, Checkin, SavingsAccount, CashAccountKind, BillCategory, HouseholdSettings, ExtraPaymentType } from "@/types/database"
+
+export interface DebtPromoInput {
+  id?: string
+  label: string
+  promo_type: PromoType
+  promo_apr: number
+  promo_end_date: string
+  promo_balance: number
+  deferred_interest_accrued: number | null
+}
 import {
   mockDebts,
   mockIncomeSources,
@@ -31,6 +41,8 @@ interface DataActions {
   addDebt: (debt: Omit<Debt, "id" | "household_id" | "created_at" | "last_verified_at">) => Promise<Debt | null>
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
   deleteDebt: (id: string) => Promise<void>
+  // Replaces the debt's promo set: missing rows deleted, rows with ids updated, new rows inserted
+  saveDebtPromos: (debtId: string, promos: DebtPromoInput[]) => Promise<void>
   // Income Sources
   addIncomeSource: (source: Omit<IncomeSource, "id" | "household_id">) => Promise<void>
   updateIncomeSource: (id: string, updates: Partial<IncomeSource>) => Promise<void>
@@ -102,7 +114,7 @@ export function useData(): AppData {
     setState(s => s.loading ? s : ({ ...s, loading: s.debts.length === 0 && s.incomeSources.length === 0 && s.bills.length === 0 }))
 
     const [debtsRes, incomeRes, billsRes, categoriesRes, settingsRes, txRes, checkinsRes, savingsRes] = await Promise.all([
-      supabase.from("debts").select("*").order("created_at", { ascending: true }),
+      supabase.from("debts").select("*, promos:debt_promos(*)").order("created_at", { ascending: true }),
       supabase.from("income_sources").select("*").order("name"),
       supabase.from("bills").select("*").order("next_due_date"),
       supabase.from("bill_categories").select("*").order("name"),
@@ -195,6 +207,53 @@ export function useData(): AppData {
     }
     const { error } = await supabase.from("debts").delete().eq("id", id)
     if (error) throw error
+    await fetchAll()
+  }
+
+  const saveDebtPromos = async (debtId: string, promos: DebtPromoInput[]) => {
+    if (useMockMode) {
+      setState(s => ({
+        ...s,
+        debts: s.debts.map(d => d.id === debtId
+          ? {
+              ...d,
+              promos: promos.map((p, i): DebtPromo => ({
+                id: p.id ?? `mock-promo-${i}`,
+                household_id: "mock-household",
+                debt_id: debtId,
+                label: p.label,
+                promo_type: p.promo_type,
+                promo_apr: p.promo_apr,
+                promo_end_date: p.promo_end_date,
+                promo_balance: p.promo_balance,
+                deferred_interest_accrued: p.deferred_interest_accrued,
+                created_at: new Date().toISOString(),
+              })),
+            }
+          : d),
+      }))
+      return
+    }
+    const keepIds = promos.filter(p => p.id).map(p => p.id!)
+    let del = supabase.from("debt_promos").delete().eq("debt_id", debtId)
+    if (keepIds.length > 0) del = del.not("id", "in", `(${keepIds.join(",")})`)
+    const { error: delError } = await del
+    if (delError) throw delError
+    if (promos.length > 0) {
+      const rows = promos.map(p => ({
+        ...(p.id ? { id: p.id } : {}),
+        household_id: householdId!,
+        debt_id: debtId,
+        label: p.label,
+        promo_type: p.promo_type,
+        promo_apr: p.promo_apr,
+        promo_end_date: p.promo_end_date,
+        promo_balance: p.promo_balance,
+        deferred_interest_accrued: p.deferred_interest_accrued,
+      }))
+      const { error } = await supabase.from("debt_promos").upsert(rows)
+      if (error) throw error
+    }
     await fetchAll()
   }
 
@@ -461,6 +520,7 @@ export function useData(): AppData {
     addDebt,
     updateDebt,
     deleteDebt,
+    saveDebtPromos,
     addIncomeSource,
     updateIncomeSource,
     deleteIncomeSource,

@@ -1,6 +1,6 @@
 import type { Debt } from "@/types/database"
 import { calculatePayoff } from "@/lib/payoff-engine"
-import { paymentPeriodsLeft, willMakeDeadline, projectedBalanceAtPromoEnd } from "@/lib/promo-engine"
+import { activePromos, paymentPeriodsLeftFor } from "@/lib/promo-engine"
 
 export interface InterestSavingsResult {
   interestSaved: number
@@ -24,10 +24,9 @@ function totalInterest(balance: number, rate: number, payment: number): number {
 }
 
 /**
- * Unified interest savings calculation with 3 cases:
- * - Case 1: No promo (standard payoff comparison)
- * - Case 2: Full promo (promo_balance ≈ current_balance)
- * - Case 3: Partial promo (split proportionally)
+ * Interest savings from paying actual vs minimum. Deferred-interest promos are
+ * handled per promo: payments are split proportionally by balance between the
+ * non-promo portion and each promo, and each promo faces its own deadline.
  */
 export function computeInterestSavings(debt: Debt): InterestSavingsResult {
   const actual = debt.actual_payment ?? debt.minimum_payment
@@ -35,12 +34,10 @@ export function computeInterestSavings(debt: Debt): InterestSavingsResult {
   const bal = debt.current_balance
   const rate = debt.interest_rate
 
-  const hasPromo = debt.promo_type === "deferred_interest"
-    && (debt.promo_balance ?? 0) > 0
-    && !!debt.promo_end_date
+  const deferredPromos = activePromos(debt).filter(p => p.promo_type === "deferred_interest")
 
-  // Case 1: No promo
-  if (!hasPromo) {
+  // No deferred promos: standard payoff comparison
+  if (deferredPromos.length === 0 || bal <= 0.01) {
     const totalMin = totalInterest(bal, rate, min)
     const totalAct = totalInterest(bal, rate, actual)
     return {
@@ -50,33 +47,26 @@ export function computeInterestSavings(debt: Debt): InterestSavingsResult {
     }
   }
 
-  const promoBal = debt.promo_balance!
-  const nonPromoBal = Math.max(0, bal - promoBal)
-  const isFullPromo = nonPromoBal < 0.01
+  const promoBalTotal = Math.min(bal, deferredPromos.reduce((s, p) => s + p.promo_balance, 0))
+  const nonPromoBal = Math.max(0, bal - promoBalTotal)
 
-  // Case 2: Full promo (promo_balance ≈ current_balance)
-  if (isFullPromo) {
-    return computePromoSavings(debt, promoBal, rate, min, actual)
+  let totalMin = totalInterest(nonPromoBal, rate, min * (nonPromoBal / bal))
+  let totalAct = totalInterest(nonPromoBal, rate, actual * (nonPromoBal / bal))
+
+  for (const p of deferredPromos) {
+    const ratio = Math.min(p.promo_balance, bal) / bal
+    const r = computePromoSavings(
+      p.promo_balance,
+      rate,
+      p.promo_apr,
+      paymentPeriodsLeftFor(p),
+      p.deferred_interest_accrued ?? 0,
+      min * ratio,
+      actual * ratio,
+    )
+    totalMin += r.totalInterestMinimum
+    totalAct += r.totalInterestActual
   }
-
-  // Case 3: Partial promo — split payments proportionally
-  const promoRatio = promoBal / bal
-  const promoMin = min * promoRatio
-  const promoActual = actual * promoRatio
-  const nonPromoMin = min - promoMin
-  const nonPromoActual = actual - promoActual
-
-  // Non-promo portion: standard payoff
-  const nonPromoMinInterest = totalInterest(nonPromoBal, rate, nonPromoMin)
-  const nonPromoActInterest = totalInterest(nonPromoBal, rate, nonPromoActual)
-
-  // Promo portion: deferred interest logic
-  const promoResult = computePromoSavings(
-    debt, promoBal, rate, promoMin, promoActual
-  )
-
-  const totalMin = nonPromoMinInterest + promoResult.totalInterestMinimum
-  const totalAct = nonPromoActInterest + promoResult.totalInterestActual
 
   return {
     interestSaved: Math.max(0, totalMin - totalAct),
@@ -86,39 +76,40 @@ export function computeInterestSavings(debt: Debt): InterestSavingsResult {
 }
 
 /**
- * Deferred interest promo savings for a given promo balance portion.
+ * Deferred-interest outcome for one promo balance given a monthly payment share:
+ * clear it before the deadline and the interest never existed; miss it and the
+ * accrued amount dumps onto the remaining balance.
  */
 function computePromoSavings(
-  debt: Debt,
   promoBal: number,
   rate: number,
+  promoApr: number,
+  periods: number,
+  accrued: number,
   minPayment: number,
   actualPayment: number,
 ): InterestSavingsResult {
-  const periods = paymentPeriodsLeft(debt)
   const monthlyRate = rate / 12
-  const accrued = debt.deferred_interest_accrued ?? 0
+  const deferredAtDeadline = accrued + promoBal * monthlyRate * periods
 
-  // Forward-looking deferred interest that will accrue by deadline
-  const forwardInterest = promoBal * monthlyRate * periods
-  const deferredAtDeadline = accrued + forwardInterest
-
-  // Balance remaining at deadline on minimum payments
-  const minDebt: Debt = { ...debt, actual_payment: minPayment || null }
-  const balAtDeadlineMin = projectedBalanceAtPromoEnd(minDebt)
-  const postDumpMin = balAtDeadlineMin + deferredAtDeadline
-
-  // Minimum path: dump + post-dump payoff
-  const minInterest = deferredAtDeadline + totalInterest(postDumpMin, rate, minPayment)
-
-  // Actual path: if clears before deadline, zero interest
-  const actualDebt: Debt = { ...debt, actual_payment: actualPayment || null }
-  let actInterest = 0
-  if (!willMakeDeadline(actualDebt)) {
-    const balAtDeadlineAct = projectedBalanceAtPromoEnd(actualDebt)
-    const postDumpAct = balAtDeadlineAct + deferredAtDeadline
-    actInterest = deferredAtDeadline + totalInterest(postDumpAct, rate, actualPayment)
+  const projectAtDeadline = (payment: number): number => {
+    let balance = promoBal
+    for (let m = 0; m < periods; m++) {
+      balance += balance * (promoApr / 12)
+      balance -= Math.min(balance, payment)
+      if (balance <= 0.01) return 0
+    }
+    return Math.max(0, balance)
   }
+
+  const pathInterest = (payment: number): number => {
+    const atDeadline = projectAtDeadline(payment)
+    if (atDeadline <= 0.01) return 0
+    return deferredAtDeadline + totalInterest(atDeadline + deferredAtDeadline, rate, payment)
+  }
+
+  const minInterest = pathInterest(minPayment)
+  const actInterest = pathInterest(actualPayment)
 
   return {
     interestSaved: Math.max(0, minInterest - actInterest),

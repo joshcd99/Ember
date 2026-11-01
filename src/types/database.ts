@@ -24,6 +24,21 @@ export interface HouseholdMember {
 
 export type PromoType = "deferred_interest" | "true_zero"
 
+// One promotional balance window on a debt (a card can hold several at once,
+// each from a different purchase with its own terms)
+export interface DebtPromo {
+  id: string
+  household_id: string
+  debt_id: string
+  label: string
+  promo_type: PromoType
+  promo_apr: number
+  promo_end_date: string
+  promo_balance: number
+  deferred_interest_accrued: number | null
+  created_at: string
+}
+
 export interface Debt {
   id: string
   household_id: string
@@ -36,12 +51,8 @@ export interface Debt {
   due_day: number
   created_at: string
   last_verified_at: string | null
-  // Promotional balance fields
-  promo_type?: PromoType | null
-  promo_apr?: number | null
-  promo_end_date?: string | null
-  promo_balance?: number | null
-  regular_apr?: number | null
+  // Promotional balances, loaded via join from debt_promos
+  promos?: DebtPromo[]
   // Per-debt actual payment
   actual_payment?: number | null
   // User-entered deferred interest already accrued (from statement)
@@ -237,11 +248,6 @@ export interface Database {
           due_day: number
           created_at?: string
           last_verified_at?: string | null
-          promo_type?: string | null
-          promo_apr?: number | null
-          promo_end_date?: string | null
-          promo_balance?: number | null
-          regular_apr?: number | null
           actual_payment?: number | null
           deferred_interest_accrued?: number | null
           deferment_end_date?: string | null
@@ -260,11 +266,6 @@ export interface Database {
           due_day?: number
           created_at?: string
           last_verified_at?: string | null
-          promo_type?: string | null
-          promo_apr?: number | null
-          promo_end_date?: string | null
-          promo_balance?: number | null
-          regular_apr?: number | null
           actual_payment?: number | null
           deferred_interest_accrued?: number | null
           deferment_end_date?: string | null

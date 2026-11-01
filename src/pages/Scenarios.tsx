@@ -18,10 +18,11 @@ import { calculatePayoff } from "@/lib/payoff-engine"
 import { projectSavings } from "@/lib/savings-engine"
 import { formatCurrency, cn } from "@/lib/utils"
 import {
-  hasActivePromo,
+  hasDeferredPromo,
   willMakeDeadline,
   extraNeededToMakeDeadline,
   interestAtRisk,
+  earliestPromoEndDate,
 } from "@/lib/promo-engine"
 import { SlidersHorizontal, RotateCcw, Lightbulb } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -450,19 +451,20 @@ export function Scenarios() {
 
                 {/* Promo deadline callout */}
                 {debts
-                  .filter(d => hasActivePromo(d) && d.promo_type === "deferred_interest" && !willMakeDeadline(d))
+                  .filter(d => hasDeferredPromo(d) && !willMakeDeadline(d))
                   .map(d => {
                     const needed = extraNeededToMakeDeadline(d)
                     const risk = interestAtRisk(d)
-                    const endLabel = d.promo_end_date
-                      ? new Date(d.promo_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    const endDate = earliestPromoEndDate(d)
+                    const endLabel = endDate
+                      ? new Date(endDate + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                       : ""
                     if (scenarioExtra < needed) return null
                     return (
                       <div key={d.id} className="flex items-start gap-2 mt-2 text-xs text-success bg-success/5 border border-success/20 rounded-lg p-2.5">
                         <Lightbulb className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                         <span>
-                          +{formatCurrency(needed)}/mo clears the {d.name} promo before {endLabel}.
+                          +{formatCurrency(needed)}/mo clears the {d.name} promos before {endLabel}.
                           Saves {formatCurrency(risk)} in deferred interest.
                         </span>
                       </div>

@@ -38,12 +38,14 @@ function getCelebrationStats(debt: Debt) {
 export function PayoffCelebrationModal({ open, onClose, debt }: PayoffCelebrationModalProps) {
   if (!debt) return null
 
-  const isPromoVictory = debt.promo_type && debt.promo_balance != null && debt.promo_balance <= 0.01 && debt.promo_end_date && new Date(debt.promo_end_date) > new Date()
+  // Debt hit zero while at least one promo deadline was still in the future
+  const futurePromos = (debt.promos ?? []).filter(p => new Date(p.promo_end_date + "T00:00") > new Date())
+  const isPromoVictory = futurePromos.length > 0
   const savings = getCelebrationStats(debt)
 
   // Promo victory: "You beat the clock"
   if (isPromoVictory) {
-    const isDeferredInterest = debt.promo_type === "deferred_interest"
+    const isDeferredInterest = futurePromos.some(p => p.promo_type === "deferred_interest")
     return (
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="text-center max-w-sm">

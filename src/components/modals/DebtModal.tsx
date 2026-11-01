@@ -19,12 +19,67 @@ import {
   ResponsiveContainer,
 } from "recharts"
 import { useAppData } from "@/contexts/DataContext"
-import type { Debt, DebtType, PromoType } from "@/types/database"
+import type { DebtPromoInput } from "@/hooks/useData"
+import { OWNER_OPTIONS } from "@/lib/owners"
+import type { Debt, DebtPromo, DebtType, PromoType } from "@/types/database"
 import { DEBT_TYPE_META } from "@/lib/debt-types"
 import { formatCurrency, cn } from "@/lib/utils"
 import { computeInterestSavings } from "@/lib/interest-savings"
 import { celebrateDebtPayoff } from "@/lib/confetti"
-import { Trash2, ChevronDown, AlertTriangle, Info } from "lucide-react"
+import { Trash2, ChevronDown, AlertTriangle, Info, Plus } from "lucide-react"
+
+// One editable promotional balance row (string-valued for form inputs)
+interface PromoDraft {
+  key: string
+  id?: string
+  label: string
+  promo_type: PromoType
+  promo_apr: string
+  promo_end_date: string
+  promo_balance: string
+  deferred_interest_accrued: string
+}
+
+let promoDraftCounter = 0
+function newPromoDraft(): PromoDraft {
+  return {
+    key: `draft-${++promoDraftCounter}`,
+    label: "",
+    promo_type: "deferred_interest",
+    promo_apr: "0",
+    promo_end_date: "",
+    promo_balance: "",
+    deferred_interest_accrued: "",
+  }
+}
+
+function draftFromPromo(p: DebtPromo): PromoDraft {
+  return {
+    key: p.id,
+    id: p.id,
+    label: p.label,
+    promo_type: p.promo_type,
+    promo_apr: String((p.promo_apr * 100).toFixed(2)),
+    promo_end_date: p.promo_end_date,
+    promo_balance: String(p.promo_balance),
+    deferred_interest_accrued: p.deferred_interest_accrued != null ? String(p.deferred_interest_accrued) : "",
+  }
+}
+
+function draftToPromo(d: PromoDraft): DebtPromoInput {
+  return {
+    id: d.id,
+    label: d.label.trim(),
+    promo_type: d.promo_type,
+    promo_apr: Number(d.promo_apr) / 100 || 0,
+    promo_end_date: d.promo_end_date,
+    promo_balance: Number(d.promo_balance) || 0,
+    deferred_interest_accrued:
+      d.promo_type === "deferred_interest" && d.deferred_interest_accrued
+        ? Number(d.deferred_interest_accrued)
+        : null,
+  }
+}
 
 interface DebtModalProps {
   open: boolean
@@ -35,14 +90,8 @@ interface DebtModalProps {
 }
 
 export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModalProps) {
-  const { addDebt, updateDebt, deleteDebt, debts, cashAccounts } = useAppData()
+  const { addDebt, updateDebt, deleteDebt, saveDebtPromos } = useAppData()
   const isEdit = !!debt
-
-  // Suggestions for the owner field from labels already in use
-  const ownerSuggestions = Array.from(new Set(
-    [...debts.map(d => d.owner), ...cashAccounts.map(a => a.owner), "Joint"]
-      .filter((o): o is string => !!o?.trim())
-  ))
 
   const [name, setName] = useState("")
   const [owner, setOwner] = useState("")
@@ -53,12 +102,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
   const [dueDay, setDueDay] = useState("")
   const [debtType, setDebtType] = useState<DebtType>("other")
   const [actualPayment, setActualPayment] = useState("")
-  const [promoExpanded, setPromoExpanded] = useState(false)
-  const [promoType, setPromoType] = useState<PromoType>("deferred_interest")
-  const [promoApr, setPromoApr] = useState("0")
-  const [promoEndDate, setPromoEndDate] = useState("")
-  const [promoBalance, setPromoBalance] = useState("")
-  const [deferredInterestAccrued, setDeferredInterestAccrued] = useState("")
+  const [promoDrafts, setPromoDrafts] = useState<PromoDraft[]>([])
   const [defermentExpanded, setDefermentExpanded] = useState(false)
   const [defermentEndDate, setDefermentEndDate] = useState("")
   const [defermentAccrues, setDefermentAccrues] = useState(true)
@@ -76,14 +120,11 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
       setMinimumPayment(String(debt.minimum_payment))
       setDueDay(String(debt.due_day))
       setActualPayment(debt.actual_payment != null ? String(debt.actual_payment) : "")
-      // Promo fields
-      const hasPromo = !!debt.promo_type
-      setPromoExpanded(hasPromo)
-      setPromoType(debt.promo_type ?? "deferred_interest")
-      setPromoApr(debt.promo_apr != null ? String((debt.promo_apr * 100).toFixed(2)) : "0")
-      setPromoEndDate(debt.promo_end_date ?? "")
-      setPromoBalance(debt.promo_balance != null ? String(debt.promo_balance) : "")
-      setDeferredInterestAccrued(debt.deferred_interest_accrued != null ? String(debt.deferred_interest_accrued) : "")
+      setPromoDrafts(
+        [...(debt.promos ?? [])]
+          .sort((a, b) => a.promo_end_date.localeCompare(b.promo_end_date))
+          .map(draftFromPromo)
+      )
       setDefermentExpanded(!!debt.deferment_end_date)
       setDefermentEndDate(debt.deferment_end_date ?? "")
       setDefermentAccrues(debt.deferment_interest_accrues ?? true)
@@ -97,12 +138,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
       setMinimumPayment("")
       setDueDay("")
       setActualPayment("")
-      setPromoExpanded(false)
-      setPromoType("deferred_interest")
-      setPromoApr("0")
-      setPromoEndDate("")
-      setPromoBalance("")
-      setDeferredInterestAccrued("")
+      setPromoDrafts([])
       setDefermentExpanded(false)
       setDefermentEndDate("")
       setDefermentAccrues(true)
@@ -124,15 +160,6 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
         minimum_payment: Number(minimumPayment),
         due_day: Number(dueDay),
         ...(actualPayment ? { actual_payment: Number(actualPayment) } : {}),
-        ...(promoExpanded ? {
-          promo_type: promoType,
-          promo_apr: Number(promoApr) / 100,
-          promo_end_date: promoEndDate || null,
-          promo_balance: promoBalance ? Number(promoBalance) : null,
-          regular_apr: Number(interestRate) / 100,
-          ...(promoType === "deferred_interest" && deferredInterestAccrued
-            ? { deferred_interest_accrued: Number(deferredInterestAccrued) } : {}),
-        } : {}),
         // Deferment: only send when set on add (older rows pattern); always
         // send on edit so clearing the section clears the fields
         ...(defermentExpanded && defermentEndDate
@@ -142,11 +169,18 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
             : {}),
         ...(owner.trim() ? { owner: owner.trim() } : isEdit ? { owner: null } : {}),
       }
+      let savedDebtId: string | null = null
       if (isEdit) {
         await updateDebt(debt.id, data)
+        savedDebtId = debt.id
       } else {
         const created = await addDebt(data)
+        savedDebtId = created?.id ?? null
         if (created && onCreated) await onCreated(created)
+      }
+      // Sync the promo set (deletes removed rows, so always run on edit)
+      if (savedDebtId && (isEdit || promoDrafts.length > 0)) {
+        await saveDebtPromos(savedDebtId, promoDrafts.map(draftToPromo))
       }
       onClose()
       if (isEdit && Number(currentBalance) === 0 && debt.current_balance > 0) {
@@ -184,7 +218,8 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
     // A deferred loan has no required payment yet
     (Number(minimumPayment) > 0 || inDeferment) &&
     Number(dueDay) >= 1 &&
-    Number(dueDay) <= 31
+    Number(dueDay) <= 31 &&
+    promoDrafts.every(d => d.promo_end_date && Number(d.promo_balance) > 0)
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -198,15 +233,16 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
             <Field label="Name" placeholder="e.g., Chase Visa" value={name} onChange={setName} />
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Owner</label>
-              <Input
-                list="debt-owner-suggestions"
-                placeholder="Optional — e.g., Joint"
+              <select
                 value={owner}
                 onChange={(e) => setOwner(e.target.value)}
-              />
-              <datalist id="debt-owner-suggestions">
-                {ownerSuggestions.map(o => <option key={o} value={o} />)}
-              </datalist>
+                className="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground"
+              >
+                <option value="">No owner</option>
+                {OWNER_OPTIONS.map(o => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -307,13 +343,19 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
                 current_balance: bal, starting_balance: Number(startingBalance) || bal,
                 interest_rate: rate, minimum_payment: mp, due_day: 1,
                 created_at: new Date().toISOString(), last_verified_at: null,
-                promo_type: promoExpanded ? promoType : null,
-                promo_apr: promoExpanded ? Number(promoApr) / 100 : null,
-                promo_end_date: promoExpanded && promoEndDate ? promoEndDate : null,
-                promo_balance: promoExpanded && promoBalance ? Number(promoBalance) : null,
                 actual_payment: ap,
-                deferred_interest_accrued: promoExpanded && promoType === "deferred_interest" && deferredInterestAccrued
-                  ? Number(deferredInterestAccrued) : null,
+                promos: promoDrafts
+                  .filter(d => d.promo_end_date && Number(d.promo_balance) > 0)
+                  .map((d, i): DebtPromo => ({
+                    id: `calc-${i}`, household_id: "", debt_id: "calc",
+                    label: d.label,
+                    promo_type: d.promo_type,
+                    promo_apr: Number(d.promo_apr) / 100 || 0,
+                    promo_end_date: d.promo_end_date,
+                    promo_balance: Number(d.promo_balance),
+                    deferred_interest_accrued: d.deferred_interest_accrued ? Number(d.deferred_interest_accrued) : null,
+                    created_at: new Date().toISOString(),
+                  })),
               }
               const { interestSaved } = computeInterestSavings(formDebt)
               if (interestSaved < 1) return null
@@ -325,102 +367,131 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
             })()}
           </div>
 
-          {/* Promotional balance section */}
+          {/* Promotional balances — a card can carry several at once */}
           <div className="border border-border rounded-lg">
-            <button
-              type="button"
-              onClick={() => setPromoExpanded(!promoExpanded)}
-              className="flex items-center justify-between w-full px-3 py-2.5 text-sm text-left hover:bg-muted/50 rounded-lg transition-colors"
-            >
-              <span className={promoExpanded ? "font-medium" : "text-muted-foreground"}>
-                {promoExpanded ? "Promotional Balance" : "+ This debt has a promotional rate"}
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className={promoDrafts.length > 0 ? "text-sm font-medium" : "text-sm text-muted-foreground"}>
+                {promoDrafts.length > 0
+                  ? `Promotional Balances (${promoDrafts.length})`
+                  : "Promotional balances"}
               </span>
-              <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", promoExpanded && "rotate-180")} />
-            </button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => setPromoDrafts(ds => [...ds, newPromoDraft()])}
+              >
+                <Plus className="h-3.5 w-3.5" /> Add promo
+              </Button>
+            </div>
 
-            {promoExpanded && (
+            {promoDrafts.length > 0 && (
               <div className="px-3 pb-3 space-y-3 border-t border-border pt-3">
-                {/* Promo type selector */}
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Promo Type</label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPromoType("deferred_interest")}
-                      className={cn(
-                        "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
-                        promoType === "deferred_interest"
-                          ? "border-warning bg-warning/10 text-foreground"
-                          : "border-border bg-card text-muted-foreground hover:border-warning/50"
-                      )}
-                    >
-                      <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
-                      <div>
-                        <div className="font-medium">Deferred Interest</div>
-                        <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-                          Interest accumulates silently. Most store cards &amp; BNPL.
-                        </div>
+                {promoDrafts.map((draft, idx) => {
+                  const update = (patch: Partial<PromoDraft>) =>
+                    setPromoDrafts(ds => ds.map(d => d.key === draft.key ? { ...d, ...patch } : d))
+                  return (
+                    <div key={draft.key} className="rounded-lg border border-border p-3 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder={`Label (e.g. "TV purchase") — promo ${idx + 1}`}
+                          value={draft.label}
+                          onChange={(e) => update({ label: e.target.value })}
+                          className="h-8 text-sm flex-1"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 shrink-0"
+                          onClick={() => setPromoDrafts(ds => ds.filter(d => d.key !== draft.key))}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPromoType("true_zero")}
-                      className={cn(
-                        "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
-                        promoType === "true_zero"
-                          ? "border-primary bg-primary/10 text-foreground"
-                          : "border-border bg-card text-muted-foreground hover:border-primary/50"
-                      )}
-                    >
-                      <Info className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-                      <div>
-                        <div className="font-medium">True 0%</div>
-                        <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-                          No hidden interest. Most balance transfer cards.
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="Promo Rate"
-                    type="number"
-                    suffix="%"
-                    placeholder="0"
-                    value={promoApr}
-                    onChange={setPromoApr}
-                  />
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Promo End Date</label>
-                    <DatePicker
-                      value={promoEndDate}
-                      onChange={setPromoEndDate}
-                      placeholder="Select end date"
-                    />
-                  </div>
-                </div>
-                <Field
-                  label="Promo Balance"
-                  type="number"
-                  prefix="$"
-                  placeholder={currentBalance || "0"}
-                  value={promoBalance}
-                  onChange={setPromoBalance}
-                  hint="Defaults to current balance"
-                />
-                {promoType === "deferred_interest" && (
-                  <Field
-                    label="Deferred Interest Accrued"
-                    type="number"
-                    prefix="$"
-                    placeholder="0"
-                    value={deferredInterestAccrued}
-                    onChange={setDeferredInterestAccrued}
-                    hint="From your statement"
-                  />
-                )}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => update({ promo_type: "deferred_interest" })}
+                          className={cn(
+                            "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                            draft.promo_type === "deferred_interest"
+                              ? "border-warning bg-warning/10 text-foreground"
+                              : "border-border bg-card text-muted-foreground hover:border-warning/50"
+                          )}
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
+                          <div>
+                            <div className="font-medium">Deferred Interest</div>
+                            <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                              Interest accumulates silently. Most store cards &amp; BNPL.
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => update({ promo_type: "true_zero" })}
+                          className={cn(
+                            "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                            draft.promo_type === "true_zero"
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                          )}
+                        >
+                          <Info className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                          <div>
+                            <div className="font-medium">True 0%</div>
+                            <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                              No hidden interest. Most balance transfer cards.
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field
+                          label="Promo Rate"
+                          type="number"
+                          suffix="%"
+                          placeholder="0"
+                          value={draft.promo_apr}
+                          onChange={(v) => update({ promo_apr: v })}
+                        />
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Promo End Date</label>
+                          <DatePicker
+                            value={draft.promo_end_date}
+                            onChange={(v) => update({ promo_end_date: v })}
+                            placeholder="Select end date"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field
+                          label="Promo Balance"
+                          type="number"
+                          prefix="$"
+                          placeholder="0"
+                          value={draft.promo_balance}
+                          onChange={(v) => update({ promo_balance: v })}
+                        />
+                        {draft.promo_type === "deferred_interest" && (
+                          <Field
+                            label="Interest Accrued"
+                            type="number"
+                            prefix="$"
+                            placeholder="0"
+                            value={draft.deferred_interest_accrued}
+                            onChange={(v) => update({ deferred_interest_accrued: v })}
+                            hint="From your statement"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

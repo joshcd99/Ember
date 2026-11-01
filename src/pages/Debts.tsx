@@ -43,14 +43,11 @@ import { formatCurrency, formatCurrencyExact, formatPercent, formatDate, cn } fr
 import { downloadCSV } from "@/lib/csv"
 import {
   hasActivePromo,
-  willMakeDeadline,
   extraNeededToMakeDeadline,
-  interestAtRisk,
-  monthsUntilPromoEnd,
-  daysUntilPromoEnd,
-  projectedBalanceAtPromoEnd,
-  deadlineBuffer,
-  calculateDeferredInterest,
+  interestAtRiskFor,
+  simulatePromos,
+  promoDaysLeft,
+  promoMonthsLeft,
 } from "@/lib/promo-engine"
 import { computeInterestSavings } from "@/lib/interest-savings"
 import type { Debt, DebtType, ExtraPaymentType } from "@/types/database"
@@ -148,15 +145,18 @@ export function Debts() {
             setCelebratingDebt(current)
             break
           }
-          // Check if promo balance was cleared before deadline
-          if (
-            current &&
-            prev.promo_balance != null && prev.promo_balance > 0.01 &&
-            current.promo_balance != null && current.promo_balance <= 0.01 &&
-            current.promo_end_date && new Date(current.promo_end_date) > new Date()
-          ) {
-            setCelebratingDebt(current)
-            break
+          // Check if any promo balance was cleared before its deadline
+          if (current) {
+            const prevPromoTotal = (prev.promos ?? []).reduce((s, p) => s + p.promo_balance, 0)
+            const promoCleared = (prev.promos ?? []).some(pp => {
+              const cur = (current.promos ?? []).find(cp => cp.id === pp.id)
+              const stillFuture = new Date(pp.promo_end_date + "T00:00") > new Date()
+              return pp.promo_balance > 0.01 && stillFuture && (!cur || cur.promo_balance <= 0.01)
+            })
+            if (prevPromoTotal > 0.01 && promoCleared) {
+              setCelebratingDebt(current)
+              break
+            }
           }
         }
       }
@@ -363,29 +363,10 @@ export function Debts() {
       ? computeInterestSavings(debt).interestSaved
       : 0
 
-    // Promo-specific calculations
-    const promoMonthsLeft = isPromo ? monthsUntilPromoEnd(debt) : 0
-    const promoDaysLeft = isPromo ? daysUntilPromoEnd(debt) : 0
-    const promoTimeLabel = promoDaysLeft < 60 ? `${promoDaysLeft} days` : `${promoMonthsLeft} months`
-    const promoOnTrack = isPromo ? willMakeDeadline(debt) : true
-    const promoExtraNeeded = isPromo ? extraNeededToMakeDeadline(debt) : 0
-    const promoRisk = isPromo ? interestAtRisk(debt) : 0
-    const promoProjected = isPromo ? projectedBalanceAtPromoEnd(debt) : 0
-    const promoBuffer = isPromo ? deadlineBuffer(debt) : Infinity
-    const promoPaid = isPromo && debt.promo_balance
-      ? debt.starting_balance - debt.promo_balance
-      : 0
-    const promoPct = isPromo && debt.promo_balance && debt.starting_balance > 0
-      ? ((debt.starting_balance - debt.promo_balance) / debt.starting_balance) * 100
-      : 0
-    const deferredAmt = isPromo ? calculateDeferredInterest(debt) : 0
-
-    // Progress bar color for promo
-    const promoProgressColor = promoBuffer > 2 ? "bg-success" : promoBuffer >= 0 ? "bg-warning" : "bg-destructive"
-
-    const promoEndLabel = debt.promo_end_date
-      ? new Date(debt.promo_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      : ""
+    // Per-promo projections under the current payment pace
+    const promoProjections = isPromo ? simulatePromos(debt) : []
+    const promoAllOnTrack = promoProjections.every(pr => pr.willMake)
+    const promoExtraNeeded = isPromo && !promoAllOnTrack ? extraNeededToMakeDeadline(debt) : 0
 
     return (
       <Card
@@ -504,75 +485,79 @@ export function Debts() {
             </>
           )}
 
-          {/* Promo alert section */}
-          {!isPaidOff && isPromo && debt.promo_type === "deferred_interest" && (
-            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
-                <span className="font-medium">0% promo ends {promoEndLabel}</span>
-                <span className="text-muted-foreground">&middot; {promoTimeLabel}</span>
-              </div>
-              {deferredAmt > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Deferred interest accrued: <span className="font-medium text-warning">{formatCurrency(deferredAmt)}</span>
-                </p>
-              )}
-              <div className="space-y-1">
-                <div className={cn("h-1.5 rounded-full bg-muted overflow-hidden")}>
-                  <div
-                    className={cn("h-full rounded-full transition-all", promoProgressColor)}
-                    style={{ width: `${Math.min(100, promoPct)}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  {formatCurrency(promoPaid)} of {formatCurrency(debt.starting_balance)} paid &middot; {promoPct.toFixed(0)}%
-                </p>
-              </div>
-              {promoOnTrack ? (
-                <p className="text-xs text-success flex items-center gap-1">
-                  <Check className="h-3.5 w-3.5" />
-                  On track — deadline cleared by {promoBuffer} months
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  <p className="text-xs text-destructive flex items-center gap-1">
-                    ✗ No — {formatCurrency(promoRisk)} will dump on {promoEndLabel}
+          {/* Promotional balances — one block per promo */}
+          {!isPaidOff && promoProjections.map(pr => {
+            const p = pr.promo
+            const endLabel = new Date(p.promo_end_date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+            const days = promoDaysLeft(p)
+            const months = promoMonthsLeft(p)
+            const timeLabel = days < 60 ? `${days} days` : `${months} months`
+            const isDeferred = p.promo_type === "deferred_interest"
+
+            if (isDeferred) {
+              const risk = interestAtRiskFor(debt, pr)
+              return (
+                <div key={p.id} className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+                    <span className="font-medium">
+                      {p.label ? `${p.label} — ` : ""}0% promo ends {endLabel}
+                    </span>
+                    <span className="text-muted-foreground">&middot; {timeLabel}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Promo balance: <span className="font-medium">{formatCurrency(p.promo_balance)}</span>
+                    {(p.deferred_interest_accrued ?? 0) > 0 && (
+                      <>
+                        {" "}&middot; interest accrued: <span className="font-medium text-warning">{formatCurrency(p.deferred_interest_accrued!)}</span>
+                      </>
+                    )}
                   </p>
-                  {promoExtraNeeded > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Extra needed: <span className="font-medium">+{formatCurrency(promoExtraNeeded)}/mo</span>
+                  {pr.willMake ? (
+                    <p className="text-xs text-success flex items-center gap-1">
+                      <Check className="h-3.5 w-3.5" />
+                      On track — cleared with {pr.buffer} month{pr.buffer === 1 ? "" : "s"} to spare
+                    </p>
+                  ) : (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      ✗ {formatCurrency(risk)} will dump on {endLabel} — {formatCurrency(pr.projectedBalance)} projected to remain
                     </p>
                   )}
                 </div>
-              )}
-            </div>
-          )}
+              )
+            }
 
-          {!isPaidOff && isPromo && debt.promo_type === "true_zero" && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4 text-primary flex-shrink-0" />
-                <span className="font-medium">0% promo ends {promoEndLabel}</span>
-                <span className="text-muted-foreground">&middot; {promoTimeLabel}</span>
+            return (
+              <div key={p.id} className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <Clock className="h-4 w-4 text-primary flex-shrink-0" />
+                  <span className="font-medium">
+                    {p.label ? `${p.label} — ` : ""}0% promo ends {endLabel}
+                  </span>
+                  <span className="text-muted-foreground">&middot; {timeLabel}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Remaining promo balance: <span className="font-medium">{formatCurrency(p.promo_balance)}</span>
+                  {" "}&middot; {formatPercent(debt.interest_rate)} APR applies after
+                </p>
+                {pr.willMake ? (
+                  <p className="text-xs text-success flex items-center gap-1">
+                    <Check className="h-3.5 w-3.5" />
+                    On track to clear before deadline
+                  </p>
+                ) : (
+                  <p className="text-xs text-warning flex items-center gap-1">
+                    ✗ {formatCurrency(pr.projectedBalance)} remaining at deadline
+                  </p>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Remaining promo balance: <span className="font-medium">{formatCurrency(debt.promo_balance ?? 0)}</span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                After deadline: {formatPercent(debt.interest_rate)} APR applies to remaining balance
-              </p>
-              {!promoOnTrack && (
-                <p className="text-xs text-warning flex items-center gap-1">
-                  ✗ {formatCurrency(promoProjected)} remaining at deadline
-                </p>
-              )}
-              {promoOnTrack && (
-                <p className="text-xs text-success flex items-center gap-1">
-                  <Check className="h-3.5 w-3.5" />
-                  On track to clear before deadline
-                </p>
-              )}
-            </div>
+            )
+          })}
+
+          {!isPaidOff && promoExtraNeeded > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Extra needed to clear every promo in time: <span className="font-medium">+{formatCurrency(promoExtraNeeded)}/mo</span>
+            </p>
           )}
         </CardContent>
       </Card>

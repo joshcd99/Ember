@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useAppData } from "@/contexts/DataContext"
 import { formatCurrencyExact, formatDate } from "@/lib/utils"
+import { OWNER_OPTIONS } from "@/lib/owners"
 import { Landmark, Pencil } from "lucide-react"
 import type { SavingsAccount } from "@/types/database"
 
@@ -11,17 +12,14 @@ function AccountRow({ account }: { account: SavingsAccount }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(account.name)
   const [editingOwner, setEditingOwner] = useState(false)
-  const [ownerDraft, setOwnerDraft] = useState(account.owner ?? "")
 
-  const saveOwner = async () => {
+  const saveOwner = async (value: string) => {
     setEditingOwner(false)
-    const trimmed = ownerDraft.trim()
-    if (trimmed === (account.owner ?? "")) return
+    if (value === (account.owner ?? "")) return
     try {
-      await updateCashAccount(account.id, { owner: trimmed || null })
+      await updateCashAccount(account.id, { owner: value || null })
     } catch (err) {
       console.error("CashAccountsCard: owner update failed", err)
-      setOwnerDraft(account.owner ?? "")
     }
   }
 
@@ -72,28 +70,22 @@ function AccountRow({ account }: { account: SavingsAccount }) {
             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
           </button>
           {editingOwner ? (
-            <Input
-              value={ownerDraft}
-              onChange={(e) => setOwnerDraft(e.target.value)}
-              onBlur={saveOwner}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur()
-                if (e.key === "Escape") {
-                  setOwnerDraft(account.owner ?? "")
-                  setEditingOwner(false)
-                }
-              }}
-              className="h-6 w-24 text-xs shrink-0"
-              placeholder="Owner"
+            <select
+              value={account.owner ?? ""}
+              onChange={(e) => saveOwner(e.target.value)}
+              onBlur={() => setEditingOwner(false)}
+              className="h-6 rounded-lg border border-input bg-card px-1 text-xs text-foreground shrink-0"
               autoFocus
-            />
+            >
+              <option value="">No owner</option>
+              {OWNER_OPTIONS.map(o => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
           ) : (
             <button
               type="button"
-              onClick={() => {
-                setOwnerDraft(account.owner ?? "")
-                setEditingOwner(true)
-              }}
+              onClick={() => setEditingOwner(true)}
               className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
                 account.owner
                   ? "bg-muted text-muted-foreground hover:text-foreground"

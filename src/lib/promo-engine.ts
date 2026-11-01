@@ -1,156 +1,147 @@
-import type { Debt } from "@/types/database"
+import type { Debt, DebtPromo } from "@/types/database"
 import { differenceInDays, differenceInMonths } from "date-fns"
 
-/**
- * Days remaining until promo_end_date. Returns 0 if no promo or already past.
- */
-export function daysUntilPromoEnd(debt: Debt, asOf: Date = new Date()): number {
-  if (!debt.promo_end_date) return 0
-  const end = new Date(debt.promo_end_date + "T00:00")
-  return Math.max(0, differenceInDays(end, asOf))
+const MAX_SIM_MONTHS = 600
+
+/** Projection for one promo under the debt's current payment pace */
+export interface PromoProjection {
+  promo: DebtPromo
+  /** Monthly payment opportunities before this promo's deadline */
+  periodsLeft: number
+  /** Promo balance remaining when its deadline hits */
+  projectedBalance: number
+  willMake: boolean
+  /** Months until this promo's balance clears under the allocation */
+  monthsNeeded: number
+  /** periodsLeft - monthsNeeded (negative = behind) */
+  buffer: number
+}
+
+/** Active promos (balance outstanding, deadline in the future), earliest deadline first */
+export function activePromos(debt: Debt, asOf: Date = new Date()): DebtPromo[] {
+  return (debt.promos ?? [])
+    .filter(p => p.promo_balance > 0.01 && new Date(p.promo_end_date + "T00:00") > asOf)
+    .sort((a, b) => a.promo_end_date.localeCompare(b.promo_end_date))
+}
+
+export function hasActivePromo(debt: Debt): boolean {
+  return activePromos(debt).length > 0
+}
+
+export function hasDeferredPromo(debt: Debt): boolean {
+  return activePromos(debt).some(p => p.promo_type === "deferred_interest")
+}
+
+export function promoDaysLeft(p: DebtPromo, asOf: Date = new Date()): number {
+  return Math.max(0, differenceInDays(new Date(p.promo_end_date + "T00:00"), asOf))
+}
+
+export function promoMonthsLeft(p: DebtPromo, asOf: Date = new Date()): number {
+  return Math.max(0, differenceInMonths(new Date(p.promo_end_date + "T00:00"), asOf))
+}
+
+/** Monthly payment opportunities before this promo's deadline (partial month counts) */
+export function paymentPeriodsLeftFor(p: DebtPromo, asOf: Date = new Date()): number {
+  return Math.max(0, Math.ceil(promoDaysLeft(p, asOf) / 30.44))
+}
+
+export function earliestPromoEndDate(debt: Debt): string | null {
+  const promos = activePromos(debt)
+  return promos.length > 0 ? promos[0].promo_end_date : null
 }
 
 /**
- * Months remaining until promo_end_date (for display). Uses day-aware rounding.
+ * Simulates the debt's monthly payment against all active promos at once.
+ * Allocation model: the payment goes to the earliest-deadline promo first,
+ * overflow rolls to the next. Each promo accrues its own promo APR.
  */
-export function monthsUntilPromoEnd(debt: Debt, asOf: Date = new Date()): number {
-  if (!debt.promo_end_date) return 0
-  const end = new Date(debt.promo_end_date + "T00:00")
-  return Math.max(0, differenceInMonths(end, asOf))
-}
+export function simulatePromos(debt: Debt, monthlyPayment?: number): PromoProjection[] {
+  const promos = activePromos(debt)
+  if (promos.length === 0) return []
 
-/**
- * Number of payment periods (months) remaining before the promo deadline.
- * This is what drives simulations — how many monthly payments fit before the end date.
- * Uses ceiling to count a partial month as a full payment opportunity.
- */
-export function paymentPeriodsLeft(debt: Debt, asOf: Date = new Date()): number {
-  const days = daysUntilPromoEnd(debt, asOf)
-  return Math.max(0, Math.ceil(days / 30.44)) // average days per month
-}
+  const payment = monthlyPayment ?? debt.actual_payment ?? debt.minimum_payment
+  const balances = promos.map(p => p.promo_balance)
+  const periods = promos.map(p => paymentPeriodsLeftFor(p))
+  const monthsNeeded = promos.map(() => MAX_SIM_MONTHS)
+  const projected = promos.map(() => 0)
+  const horizon = Math.max(...periods)
 
-/**
- * For deferred_interest type: returns the user-entered accrued deferred interest.
- * This replaces the old formula-based calculation that relied on created_at.
- */
-export function calculateDeferredInterest(debt: Debt): number {
-  if (debt.promo_type !== "deferred_interest") return 0
-  return debt.deferred_interest_accrued ?? 0
-}
-
-/**
- * Given current actual_payment (or minimum if null),
- * what will the remaining promo_balance be on promo_end_date?
- * Simulates monthly payments over the remaining payment periods.
- */
-export function projectedBalanceAtPromoEnd(debt: Debt): number {
-  if (!debt.promo_balance || !debt.promo_end_date) return 0
-
-  const periods = paymentPeriodsLeft(debt)
-  if (periods <= 0) return debt.promo_balance
-
-  const monthlyPayment = debt.actual_payment ?? debt.minimum_payment
-  const promoRate = (debt.promo_apr ?? 0) / 12
-
-  let balance = debt.promo_balance
-  for (let m = 0; m < periods; m++) {
-    balance += balance * promoRate
-    balance -= Math.min(balance, monthlyPayment)
-    if (balance <= 0.01) return 0
+  for (let m = 1; m <= MAX_SIM_MONTHS; m++) {
+    for (let i = 0; i < promos.length; i++) {
+      if (balances[i] > 0.01) balances[i] += balances[i] * (promos[i].promo_apr / 12)
+    }
+    let avail = payment
+    for (let i = 0; i < promos.length && avail > 0; i++) {
+      if (balances[i] > 0.01) {
+        const pay = Math.min(balances[i], avail)
+        balances[i] -= pay
+        avail -= pay
+      }
+    }
+    for (let i = 0; i < promos.length; i++) {
+      if (balances[i] <= 0.01 && monthsNeeded[i] === MAX_SIM_MONTHS) monthsNeeded[i] = m
+      if (m === periods[i]) projected[i] = Math.max(0, balances[i])
+    }
+    if (m >= horizon && balances.every(b => b <= 0.01)) break
   }
-  return Math.max(0, balance)
+
+  return promos.map((p, i) => ({
+    promo: p,
+    periodsLeft: periods[i],
+    projectedBalance: Math.round(projected[i] * 100) / 100,
+    willMake: projected[i] <= 0.01,
+    monthsNeeded: monthsNeeded[i],
+    buffer: periods[i] - monthsNeeded[i],
+  }))
 }
 
-/**
- * Returns true if current payment pace clears promo_balance before promo_end_date.
- */
+/** True when the current payment pace clears every promo before its deadline */
 export function willMakeDeadline(debt: Debt): boolean {
-  if (!debt.promo_type || !debt.promo_balance || !debt.promo_end_date) return true
-  return projectedBalanceAtPromoEnd(debt) <= 0.01
+  return simulatePromos(debt).every(pr => pr.willMake)
 }
 
-/**
- * How much additional monthly payment would be needed to clear promo_balance in time.
- * Returns 0 if already on track.
- */
+/** Sum of user-entered accrued deferred interest across active deferred promos */
+export function calculateDeferredInterest(debt: Debt): number {
+  return activePromos(debt)
+    .filter(p => p.promo_type === "deferred_interest")
+    .reduce((s, p) => s + (p.deferred_interest_accrued ?? 0), 0)
+}
+
+/** Interest that dumps if THIS promo's deadline is missed (deferred type only) */
+export function interestAtRiskFor(debt: Debt, pr: PromoProjection): number {
+  if (pr.promo.promo_type !== "deferred_interest") return 0
+  const accrued = pr.promo.deferred_interest_accrued ?? 0
+  return accrued + pr.promo.promo_balance * (debt.interest_rate / 12) * pr.periodsLeft
+}
+
+/** Total deferred interest at risk across promos that are NOT on track */
+export function interestAtRisk(debt: Debt): number {
+  return simulatePromos(debt)
+    .filter(pr => !pr.willMake)
+    .reduce((s, pr) => s + interestAtRiskFor(debt, pr), 0)
+}
+
+/** Additional monthly payment needed so every promo clears before its deadline */
 export function extraNeededToMakeDeadline(debt: Debt): number {
   if (willMakeDeadline(debt)) return 0
-  if (!debt.promo_balance || !debt.promo_end_date) return 0
-
-  const periods = paymentPeriodsLeft(debt)
-  if (periods <= 0) return debt.promo_balance // already past deadline
-
-  const currentPayment = debt.actual_payment ?? debt.minimum_payment
-  const promoRate = (debt.promo_apr ?? 0) / 12
-
-  // Binary search for the additional amount needed
+  const promos = activePromos(debt)
+  const current = debt.actual_payment ?? debt.minimum_payment
   let lo = 0
-  let hi = debt.promo_balance
+  let hi = promos.reduce((s, p) => s + p.promo_balance, 0)
   for (let iter = 0; iter < 50; iter++) {
     const mid = (lo + hi) / 2
-    const testPayment = currentPayment + mid
-
-    let balance = debt.promo_balance
-    for (let m = 0; m < periods; m++) {
-      balance += balance * promoRate
-      balance -= Math.min(balance, testPayment)
-      if (balance <= 0.01) { balance = 0; break }
-    }
-
-    if (balance <= 0.01) {
+    if (simulatePromos(debt, current + mid).every(pr => pr.willMake)) {
       hi = mid
     } else {
       lo = mid
     }
   }
-
   return Math.ceil(hi)
 }
 
-/**
- * For deferred_interest: total interest at risk if deadline is missed.
- * = already accrued + forward-looking interest over remaining months.
- * Forward: promo_balance × (interest_rate / 12) × paymentPeriodsLeft
- * For true_zero: 0.
- */
-export function interestAtRisk(debt: Debt): number {
-  if (debt.promo_type !== "deferred_interest") return 0
-  if (!debt.promo_balance || !debt.interest_rate || !debt.promo_end_date) return 0
-
-  const accrued = debt.deferred_interest_accrued ?? 0
-  const monthlyRate = debt.interest_rate / 12
-  const periods = paymentPeriodsLeft(debt)
-  return accrued + debt.promo_balance * monthlyRate * periods
-}
-
-/**
- * Returns the number of months of buffer if on track (positive = months ahead),
- * or negative if behind. Used for progress bar coloring.
- */
+/** Months of slack on the tightest promo (negative = behind; Infinity = no promos) */
 export function deadlineBuffer(debt: Debt): number {
-  if (!debt.promo_type || !debt.promo_balance || !debt.promo_end_date) return Infinity
-
-  const monthlyPayment = debt.actual_payment ?? debt.minimum_payment
-  const promoRate = (debt.promo_apr ?? 0) / 12
-  const periods = paymentPeriodsLeft(debt)
-
-  // Simulate: how many months to pay off promo balance?
-  let balance = debt.promo_balance
-  let monthsNeeded = 0
-  while (balance > 0.01 && monthsNeeded < 600) {
-    monthsNeeded++
-    balance += balance * promoRate
-    balance -= Math.min(balance, monthlyPayment)
-  }
-
-  return periods - monthsNeeded
-}
-
-/**
- * Returns true if the debt has an active promo (type set, balance > 0, end date in the future).
- */
-export function hasActivePromo(debt: Debt): boolean {
-  if (!debt.promo_type || !debt.promo_end_date) return false
-  if (!debt.promo_balance || debt.promo_balance <= 0.01) return false
-  return new Date(debt.promo_end_date + "T00:00") > new Date()
+  const prs = simulatePromos(debt)
+  if (prs.length === 0) return Infinity
+  return Math.min(...prs.map(pr => pr.buffer))
 }
