@@ -13,11 +13,13 @@ import { useSimpleFin } from "@/hooks/useSimpleFin"
 import { CATEGORY_COLORS } from "@/lib/bill-categories"
 import { formatCurrencyExact } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { DebtModal } from "@/components/modals/DebtModal"
+import type { SimpleFinAccount, SimpleFinAccountKind } from "@/types/database"
 import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus, CalendarDays, Landmark, RefreshCw } from "lucide-react"
 
 export function Settings() {
   const { user, signOut, useMockMode } = useAuth()
-  const { billCategories, addBillCategory, deleteBillCategory, householdSettings, updateBalanceThresholds, debts, refresh } = useAppData()
+  const { billCategories, addBillCategory, deleteBillCategory, householdSettings, updateBalanceThresholds, debts, cashAccounts, addCashAccount, refresh } = useAppData()
   const { theme, toggleTheme } = useTheme()
   const { household, members, updateHouseholdName, inviteMember, removeMember } = useHousehold()
   const simplefin = useSimpleFin()
@@ -35,6 +37,8 @@ export function Settings() {
   const [bankSyncError, setBankSyncError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [confirmDisconnectId, setConfirmDisconnectId] = useState<string | null>(null)
+  const [debtModalAccount, setDebtModalAccount] = useState<SimpleFinAccount | null>(null)
+  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({})
 
   // Bill category management
   const [newCatName, setNewCatName] = useState("")
@@ -110,18 +114,56 @@ export function Settings() {
     }
   }
 
-  const handleLinkChange = async (accountId: string, value: string) => {
+  const accountLabel = (a: SimpleFinAccount) => a.display_name?.trim() || a.name || "Unnamed account"
+
+  const handleLinkChange = async (acct: SimpleFinAccount, value: string) => {
     setBankSyncError(null)
     try {
-      if (value === "savings") {
-        await simplefin.linkAccount(accountId, { debtId: null, savings: true })
+      if (value === "new-debt") {
+        setDebtModalAccount(acct)
+      } else if (value === "new-checking" || value === "new-savings") {
+        const kind = value === "new-checking" ? "checking" : "savings"
+        const created = await addCashAccount(accountLabel(acct), kind, Math.max(acct.balance ?? 0, 0))
+        if (created) {
+          await simplefin.linkAccount(acct.id, { debtId: null, savingsAccountId: created.id })
+          await refresh()
+        }
       } else if (value.startsWith("debt:")) {
-        await simplefin.linkAccount(accountId, { debtId: value.slice(5), savings: false })
+        await simplefin.linkAccount(acct.id, { debtId: value.slice(5), savingsAccountId: null })
+      } else if (value.startsWith("cash:")) {
+        await simplefin.linkAccount(acct.id, { debtId: null, savingsAccountId: value.slice(5) })
       } else {
-        await simplefin.linkAccount(accountId, { debtId: null, savings: false })
+        await simplefin.linkAccount(acct.id, { debtId: null, savingsAccountId: null })
       }
     } catch (err) {
       setBankSyncError(err instanceof Error ? err.message : "Could not update the link.")
+    }
+  }
+
+  const handleKindChange = async (acct: SimpleFinAccount, kind: SimpleFinAccountKind) => {
+    setBankSyncError(null)
+    try {
+      await simplefin.updateAccountMeta(acct.id, { account_kind: kind })
+    } catch (err) {
+      setBankSyncError(err instanceof Error ? err.message : "Could not update the account type.")
+    }
+  }
+
+  const handleLabelSave = async (acct: SimpleFinAccount) => {
+    const draft = labelDrafts[acct.id]
+    if (draft === undefined) return
+    const trimmed = draft.trim()
+    setLabelDrafts(d => {
+      const next = { ...d }
+      delete next[acct.id]
+      return next
+    })
+    if (trimmed === (acct.display_name ?? "")) return
+    setBankSyncError(null)
+    try {
+      await simplefin.updateAccountMeta(acct.id, { display_name: trimmed || null })
+    } catch (err) {
+      setBankSyncError(err instanceof Error ? err.message : "Could not rename the account.")
     }
   }
 
@@ -362,40 +404,66 @@ export function Settings() {
                   )}
                   <div className="space-y-2">
                     {connAccounts.map(acct => (
-                      <div
-                        key={acct.id}
-                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm truncate">
-                            {acct.name}
+                      <div key={acct.id} className="space-y-1.5 border-t border-input pt-2 first:border-t-0 first:pt-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <Input
+                            value={labelDrafts[acct.id] ?? acct.display_name ?? acct.name}
+                            onChange={(e) => setLabelDrafts(d => ({ ...d, [acct.id]: e.target.value }))}
+                            onBlur={() => handleLabelSave(acct)}
+                            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                            className="h-8 text-sm flex-1 min-w-0"
+                            placeholder={acct.name || "Account name"}
+                          />
+                          <div className="text-right shrink-0">
+                            <p className="text-sm">{acct.balance != null ? formatCurrencyExact(acct.balance) : "—"}</p>
                             {acct.org_name && (
-                              <span className="text-muted-foreground"> · {acct.org_name}</span>
+                              <p className="text-xs text-muted-foreground truncate max-w-[140px]">{acct.org_name}</p>
                             )}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {acct.balance != null ? formatCurrencyExact(acct.balance) : "—"}
-                          </p>
+                          </div>
                         </div>
-                        <select
-                          value={
-                            acct.linked_debt_id
-                              ? `debt:${acct.linked_debt_id}`
-                              : acct.linked_savings
-                                ? "savings"
-                                : ""
-                          }
-                          onChange={(e) => handleLinkChange(acct.id, e.target.value)}
-                          className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground sm:max-w-[220px]"
-                        >
-                          <option value="">Not linked</option>
-                          {debts.map(d => (
-                            <option key={d.id} value={`debt:${d.id}`}>
-                              Debt: {d.name}
-                            </option>
-                          ))}
-                          <option value="savings">Savings account</option>
-                        </select>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <select
+                            value={acct.account_kind ?? "other"}
+                            onChange={(e) => handleKindChange(acct, e.target.value as SimpleFinAccountKind)}
+                            className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground sm:w-[130px]"
+                          >
+                            <option value="checking">Checking</option>
+                            <option value="savings">Savings</option>
+                            <option value="credit_card">Credit card</option>
+                            <option value="loan">Loan</option>
+                            <option value="other">Other</option>
+                          </select>
+                          <select
+                            value={
+                              acct.linked_debt_id
+                                ? `debt:${acct.linked_debt_id}`
+                                : acct.linked_savings_account_id
+                                  ? `cash:${acct.linked_savings_account_id}`
+                                  : ""
+                            }
+                            onChange={(e) => handleLinkChange(acct, e.target.value)}
+                            className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground flex-1 min-w-0"
+                          >
+                            <option value="">Not linked to Ember</option>
+                            <optgroup label="Debts">
+                              {debts.map(d => (
+                                <option key={d.id} value={`debt:${d.id}`}>
+                                  {d.name}
+                                </option>
+                              ))}
+                              <option value="new-debt">+ New debt from this account…</option>
+                            </optgroup>
+                            <optgroup label="Cash accounts">
+                              {cashAccounts.map(c => (
+                                <option key={c.id} value={`cash:${c.id}`}>
+                                  {c.name} ({c.kind === "checking" ? "checking" : "savings"})
+                                </option>
+                              ))}
+                              <option value="new-checking">+ New checking account</option>
+                              <option value="new-savings">+ New savings account</option>
+                            </optgroup>
+                          </select>
+                        </div>
                       </div>
                     ))}
                     {connAccounts.length === 0 && (
@@ -658,6 +726,27 @@ export function Settings() {
 
       {/* Version */}
       <p className="text-xs text-muted-foreground text-center">Ember v{version}</p>
+
+      {/* Create debt from a synced bank account */}
+      <DebtModal
+        open={!!debtModalAccount}
+        onClose={() => setDebtModalAccount(null)}
+        initial={debtModalAccount ? {
+          name: accountLabel(debtModalAccount),
+          current_balance: Math.abs(debtModalAccount.balance ?? 0),
+          starting_balance: Math.abs(debtModalAccount.balance ?? 0),
+          debt_type: debtModalAccount.account_kind === "credit_card"
+            ? "credit_card"
+            : debtModalAccount.account_kind === "loan"
+              ? "personal_loan"
+              : "other",
+        } : null}
+        onCreated={async (newDebt) => {
+          if (debtModalAccount) {
+            await simplefin.linkAccount(debtModalAccount.id, { debtId: newDebt.id, savingsAccountId: null })
+          }
+        }}
+      />
 
       {/* Delete all data confirmation dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={(open) => !open && !deleting && setDeleteDialogOpen(false)}>

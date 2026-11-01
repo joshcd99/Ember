@@ -16,10 +16,17 @@ interface RegisterRow {
 }
 
 export function CashFlowRegister() {
-  const { bills, incomeSources, debts, transactions, savingsAccount } = useAppData()
+  const { bills, incomeSources, debts, transactions, savingsAccount, cashAccounts } = useAppData()
   const [expanded, setExpanded] = useState(false)
 
-  const hasSavings = savingsAccount && savingsAccount.current_balance > 0
+  // Checking accounts are the cash anchor when they exist; otherwise fall
+  // back to the savings balance (the app's original behavior)
+  const checkingAccounts = cashAccounts.filter(a => a.kind === "checking")
+  const cashAnchor = checkingAccounts.length > 0
+    ? checkingAccounts.reduce((sum, a) => sum + a.current_balance, 0)
+    : savingsAccount?.current_balance ?? 0
+
+  const hasSavings = (savingsAccount && savingsAccount.current_balance > 0) || checkingAccounts.length > 0
 
   const rows = useMemo(() => {
     const now = new Date()
@@ -70,7 +77,7 @@ export function CashFlowRegister() {
     events.sort((a, b) => a.date.getTime() - b.date.getTime())
 
     // Build rows with running balance
-    const startingBalance = savingsAccount?.current_balance ?? 0
+    const startingBalance = cashAnchor
     const result: RegisterRow[] = [
       { date: monthStart, label: "Starting balance", type: "starting", amount: startingBalance, runningBalance: startingBalance },
     ]
@@ -97,7 +104,7 @@ export function CashFlowRegister() {
     })
 
     return result
-  }, [bills, incomeSources, debts, transactions, savingsAccount])
+  }, [bills, incomeSources, debts, transactions, cashAnchor])
 
   return (
     <Card>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
-import type { SimpleFinAccount, SimpleFinConnection } from "@/types/database"
+import type { SimpleFinAccount, SimpleFinAccountKind, SimpleFinConnection } from "@/types/database"
 
 // Columns only — access_url (the Bridge credential) must never reach the client
 const CONNECTION_COLUMNS = "id, household_id, created_by, created_at, last_synced_at, last_sync_status, last_sync_error"
@@ -61,12 +61,21 @@ export function useSimpleFin() {
 
   const linkAccount = async (
     accountId: string,
-    link: { debtId: string | null; savings: boolean }
+    link: { debtId: string | null; savingsAccountId: string | null }
   ) => {
     const { error } = await supabase
       .from("simplefin_accounts")
-      .update({ linked_debt_id: link.debtId, linked_savings: link.savings })
+      .update({ linked_debt_id: link.debtId, linked_savings_account_id: link.savingsAccountId })
       .eq("id", accountId)
+    if (error) throw error
+    await fetchAll()
+  }
+
+  const updateAccountMeta = async (
+    accountId: string,
+    meta: { display_name?: string | null; account_kind?: SimpleFinAccountKind | null }
+  ) => {
+    const { error } = await supabase.from("simplefin_accounts").update(meta).eq("id", accountId)
     if (error) throw error
     await fetchAll()
   }
@@ -77,5 +86,5 @@ export function useSimpleFin() {
     await fetchAll()
   }
 
-  return { connections, accounts, loading, connect, syncNow, linkAccount, disconnect, refresh: fetchAll }
+  return { connections, accounts, loading, connect, syncNow, linkAccount, updateAccountMeta, disconnect, refresh: fetchAll }
 }

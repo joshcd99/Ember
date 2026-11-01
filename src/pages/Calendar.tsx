@@ -23,7 +23,7 @@ interface DayEvent {
 }
 
 export function Calendar() {
-  const { bills, billCategories, incomeSources, debts, savingsAccount, householdSettings, loading } = useAppData()
+  const { bills, billCategories, incomeSources, debts, savingsAccount, cashAccounts, householdSettings, loading } = useAppData()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [quickAddDate, setQuickAddDate] = useState("")
@@ -170,7 +170,11 @@ export function Calendar() {
   // Build running balance map from today through the visible calendar
   const balanceMap = useMemo(() => {
     const map = new Map<string, number>()
-    const startBalance = savingsAccount?.current_balance ?? 0
+    // Checking accounts anchor the running balance when they exist
+    const checkingAccounts = cashAccounts.filter(a => a.kind === "checking")
+    const startBalance = checkingAccounts.length > 0
+      ? checkingAccounts.reduce((sum, a) => sum + a.current_balance, 0)
+      : savingsAccount?.current_balance ?? 0
     const today = startOfDay(new Date())
     const rangeStart = calendarStart <= today ? calendarStart : today
     const days = eachDayOfInterval({ start: rangeStart, end: calendarEnd })
@@ -190,7 +194,7 @@ export function Calendar() {
     }
 
     return map
-  }, [fullEventsMap, calendarStart, calendarEnd, savingsAccount])
+  }, [fullEventsMap, calendarStart, calendarEnd, savingsAccount, cashAccounts])
 
   if (loading) {
     return <div className="animate-pulse text-muted-foreground py-12 text-center">Loading...</div>

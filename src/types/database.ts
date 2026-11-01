@@ -137,6 +137,8 @@ export interface SimpleFinConnection {
   last_sync_error: string | null
 }
 
+export type SimpleFinAccountKind = "checking" | "savings" | "credit_card" | "loan" | "other"
+
 export interface SimpleFinAccount {
   id: string
   household_id: string
@@ -149,7 +151,9 @@ export interface SimpleFinAccount {
   available_balance: number | null
   balance_date: string | null
   linked_debt_id: string | null
-  linked_savings: boolean
+  linked_savings_account_id: string | null
+  display_name: string | null
+  account_kind: SimpleFinAccountKind | null
   sync_enabled: boolean
   created_at: string
 }
@@ -162,12 +166,17 @@ export interface Checkin {
   completed_at: string | null
 }
 
+export type CashAccountKind = "checking" | "savings"
+
 export interface SavingsAccount {
   id: string
   household_id: string
   current_balance: number
   apy: number
   last_verified_at: string | null
+  name: string
+  kind: CashAccountKind
+  created_at: string
 }
 
 export interface Database {
@@ -425,6 +434,9 @@ export interface Database {
           current_balance?: number
           apy?: number
           last_verified_at?: string | null
+          name?: string
+          kind?: string
+          created_at?: string
         }
         Update: {
           id?: string
@@ -432,6 +444,9 @@ export interface Database {
           current_balance?: number
           apy?: number
           last_verified_at?: string | null
+          name?: string
+          kind?: string
+          created_at?: string
         }
         Relationships: []
       }

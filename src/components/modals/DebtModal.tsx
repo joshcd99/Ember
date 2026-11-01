@@ -30,9 +30,11 @@ interface DebtModalProps {
   open: boolean
   onClose: () => void
   debt?: Debt | null // null = add, Debt = edit
+  initial?: Partial<Debt> | null // prefill values for add mode (e.g. from a synced bank account)
+  onCreated?: (debt: Debt) => void | Promise<void>
 }
 
-export function DebtModal({ open, onClose, debt }: DebtModalProps) {
+export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModalProps) {
   const { addDebt, updateDebt, deleteDebt } = useAppData()
   const isEdit = !!debt
 
@@ -72,10 +74,10 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setPromoBalance(debt.promo_balance != null ? String(debt.promo_balance) : "")
       setDeferredInterestAccrued(debt.deferred_interest_accrued != null ? String(debt.deferred_interest_accrued) : "")
     } else {
-      setName("")
-      setDebtType("other")
-      setCurrentBalance("")
-      setStartingBalance("")
+      setName(initial?.name ?? "")
+      setDebtType(initial?.debt_type ?? "other")
+      setCurrentBalance(initial?.current_balance != null ? String(initial.current_balance) : "")
+      setStartingBalance(initial?.starting_balance != null ? String(initial.starting_balance) : "")
       setInterestRate("")
       setMinimumPayment("")
       setDueDay("")
@@ -88,7 +90,7 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       setDeferredInterestAccrued("")
     }
     setConfirmDelete(false)
-  }, [debt, open])
+  }, [debt, initial, open])
 
   const handleSave = async () => {
     setSaving(true)
@@ -117,7 +119,8 @@ export function DebtModal({ open, onClose, debt }: DebtModalProps) {
       if (isEdit) {
         await updateDebt(debt.id, data)
       } else {
-        await addDebt(data)
+        const created = await addDebt(data)
+        if (created && onCreated) await onCreated(created)
       }
       onClose()
       if (isEdit && Number(currentBalance) === 0 && debt.current_balance > 0) {

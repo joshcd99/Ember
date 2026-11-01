@@ -159,6 +159,9 @@ export const mockSavingsAccount: SavingsAccount = {
   current_balance: 2500,
   apy: 0.045,
   last_verified_at: "2026-02-20T00:00:00Z",
+  name: "Savings",
+  kind: "savings",
+  created_at: "2026-01-01T00:00:00Z",
 }
 
 export function getTotalDebt(debts: Debt[]): number {

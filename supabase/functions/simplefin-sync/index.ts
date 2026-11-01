@@ -67,6 +67,15 @@ async function fetchAccounts(accessUrl: string, startEpoch: number): Promise<Sim
   return (data.accounts ?? []) as SimpleFinAccount[]
 }
 
+function guessAccountKind(name: string): string {
+  const n = name.toLowerCase()
+  if (/check|chequing/.test(n)) return "checking"
+  if (/sav|money market|\bmma\b/.test(n)) return "savings"
+  if (/credit|card|visa|mastercard|amex|discover/.test(n)) return "credit_card"
+  if (/loan|mortgage|auto|student|financ/.test(n)) return "loan"
+  return "other"
+}
+
 async function syncConnection(admin: SupabaseClient, conn: ConnectionRow): Promise<{ accounts: number; payments: number }> {
   const now = Math.floor(Date.now() / 1000)
   // Overlap window so late-posting transactions aren't missed; dedupe handles repeats
@@ -106,23 +115,28 @@ async function syncConnection(admin: SupabaseClient, conn: ConnectionRow): Promi
       ? new Date(account["balance-date"] * 1000).toISOString()
       : null
 
-    const { error: upsertErr } = await admin.from("simplefin_accounts").upsert(
-      {
-        household_id: conn.household_id,
-        connection_id: conn.id,
-        simplefin_id: account.id,
-        name: account.name ?? "",
-        org_name: account.org?.name ?? account.org?.domain ?? "",
-        currency: account.currency ?? "USD",
-        balance: Number.isFinite(balance) ? balance : null,
-        available_balance: availableRaw != null ? parseFloat(availableRaw) : null,
-        balance_date: balanceDate,
-      },
-      { onConflict: "connection_id,simplefin_id" }
-    )
+    const existing = existingById.get(account.id)
+
+    // display_name and account_kind are user-editable: only seed a guessed
+    // kind on first sight, and never include them in updates
+    const payload: Record<string, unknown> = {
+      household_id: conn.household_id,
+      connection_id: conn.id,
+      simplefin_id: account.id,
+      name: account.name ?? "",
+      org_name: account.org?.name ?? account.org?.domain ?? "",
+      currency: account.currency ?? "USD",
+      balance: Number.isFinite(balance) ? balance : null,
+      available_balance: availableRaw != null ? parseFloat(availableRaw) : null,
+      balance_date: balanceDate,
+    }
+    if (!existing) payload.account_kind = guessAccountKind(account.name ?? "")
+
+    const { error: upsertErr } = await admin.from("simplefin_accounts").upsert(payload, {
+      onConflict: "connection_id,simplefin_id",
+    })
     if (upsertErr) throw upsertErr
 
-    const existing = existingById.get(account.id)
     if (!existing || existing.sync_enabled === false) continue
 
     if (existing.linked_debt_id) {
@@ -167,14 +181,14 @@ async function syncConnection(admin: SupabaseClient, conn: ConnectionRow): Promi
           paymentsInserted += inserted?.length ?? 0
         }
       }
-    } else if (existing.linked_savings && Number.isFinite(balance)) {
+    } else if (existing.linked_savings_account_id && Number.isFinite(balance)) {
       const { error: savErr } = await admin
         .from("savings_accounts")
         .update({
           current_balance: balance,
           last_verified_at: balanceDate ?? new Date().toISOString(),
         })
-        .eq("household_id", conn.household_id)
+        .eq("id", existing.linked_savings_account_id)
       if (savErr) throw savErr
     }
   }
