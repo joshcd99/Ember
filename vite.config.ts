@@ -10,7 +10,15 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registration lives in main.tsx (virtual:pwa-register) so open tabs
+      // reload when a new service worker takes control after a deploy
+      injectRegister: false,
       workbox: {
+        // Take over open tabs immediately on activation; paired with the
+        // controllerchange reload in main.tsx this prevents half-old,
+        // half-new states after deploys (the blank-page bug)
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
