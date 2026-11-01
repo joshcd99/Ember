@@ -15,7 +15,32 @@ import { formatCurrencyExact } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { DebtModal } from "@/components/modals/DebtModal"
 import type { SimpleFinAccount, SimpleFinAccountKind } from "@/types/database"
-import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus, CalendarDays, Landmark, RefreshCw } from "lucide-react"
+import { User, Bell, Shield, Trash2, Sun, Moon, Home, Mail, X, Check, Tag, Plus, CalendarDays, Landmark, RefreshCw, ChevronDown, EyeOff } from "lucide-react"
+
+function FoldGroup({ title, count, defaultOpen = false, children }: {
+  title: string
+  count: number
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  if (count === 0) return null
+  return (
+    <div className="rounded-lg border border-input">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium"
+      >
+        <span>
+          {title} <span className="font-normal text-muted-foreground">({count})</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+      </button>
+      {open && <div className="space-y-2 px-3 pb-3">{children}</div>}
+    </div>
+  )
+}
 
 export function Settings() {
   const { user, signOut, useMockMode } = useAuth()
@@ -166,6 +191,90 @@ export function Settings() {
       setBankSyncError(err instanceof Error ? err.message : "Could not rename the account.")
     }
   }
+
+  const handleSkipChange = async (acct: SimpleFinAccount, skipped: boolean) => {
+    setBankSyncError(null)
+    try {
+      await simplefin.setAccountSkipped(acct.id, skipped)
+    } catch (err) {
+      setBankSyncError(err instanceof Error ? err.message : "Could not update the account.")
+    }
+  }
+
+  const renderAccountRow = (acct: SimpleFinAccount, skippable: boolean) => (
+    <div key={acct.id} className="space-y-1.5 border-t border-input pt-2 first:border-t-0 first:pt-0">
+      <div className="flex items-center justify-between gap-2">
+        <Input
+          value={labelDrafts[acct.id] ?? acct.display_name ?? acct.name}
+          onChange={(e) => setLabelDrafts(d => ({ ...d, [acct.id]: e.target.value }))}
+          onBlur={() => handleLabelSave(acct)}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          className="h-8 text-sm flex-1 min-w-0"
+          placeholder={acct.name || "Account name"}
+        />
+        <div className="text-right shrink-0">
+          <p className="text-sm">{acct.balance != null ? formatCurrencyExact(acct.balance) : "—"}</p>
+          {acct.org_name && (
+            <p className="text-xs text-muted-foreground truncate max-w-[140px]">{acct.org_name}</p>
+          )}
+        </div>
+        {skippable && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 w-8 p-0 shrink-0"
+            title="Skip this account"
+            onClick={() => handleSkipChange(acct, true)}
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <select
+          value={acct.account_kind ?? "other"}
+          onChange={(e) => handleKindChange(acct, e.target.value as SimpleFinAccountKind)}
+          className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground sm:w-[130px]"
+        >
+          <option value="checking">Checking</option>
+          <option value="savings">Savings</option>
+          <option value="credit_card">Credit card</option>
+          <option value="loan">Loan</option>
+          <option value="other">Other</option>
+        </select>
+        <select
+          value={
+            acct.linked_debt_id
+              ? `debt:${acct.linked_debt_id}`
+              : acct.linked_savings_account_id
+                ? `cash:${acct.linked_savings_account_id}`
+                : ""
+          }
+          onChange={(e) => handleLinkChange(acct, e.target.value)}
+          className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground flex-1 min-w-0"
+        >
+          <option value="">Not linked to Ember</option>
+          <optgroup label="Debts">
+            {debts.map(d => (
+              <option key={d.id} value={`debt:${d.id}`}>
+                {d.name}
+              </option>
+            ))}
+            <option value="new-debt">+ New debt from this account…</option>
+          </optgroup>
+          <optgroup label="Cash accounts">
+            {cashAccounts.map(c => (
+              <option key={c.id} value={`cash:${c.id}`}>
+                {c.name} ({c.kind === "checking" ? "checking" : "savings"})
+              </option>
+            ))}
+            <option value="new-checking">+ New checking account</option>
+            <option value="new-savings">+ New savings account</option>
+          </optgroup>
+        </select>
+      </div>
+    </div>
+  )
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -353,10 +462,8 @@ export function Settings() {
               Access is read-only and refreshes about once a day.
             </p>
 
-            {simplefin.connections.map(conn => {
-              const connAccounts = simplefin.accounts.filter(a => a.connection_id === conn.id)
-              return (
-                <div key={conn.id} className="rounded-lg border border-input p-3 space-y-3">
+            {simplefin.connections.map(conn => (
+                <div key={conn.id} className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-muted-foreground">
                       {conn.last_synced_at
@@ -402,79 +509,55 @@ export function Settings() {
                   {conn.last_sync_status === "error" && conn.last_sync_error && (
                     <p className="text-xs text-destructive">{conn.last_sync_error}</p>
                   )}
-                  <div className="space-y-2">
-                    {connAccounts.map(acct => (
-                      <div key={acct.id} className="space-y-1.5 border-t border-input pt-2 first:border-t-0 first:pt-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <Input
-                            value={labelDrafts[acct.id] ?? acct.display_name ?? acct.name}
-                            onChange={(e) => setLabelDrafts(d => ({ ...d, [acct.id]: e.target.value }))}
-                            onBlur={() => handleLabelSave(acct)}
-                            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                            className="h-8 text-sm flex-1 min-w-0"
-                            placeholder={acct.name || "Account name"}
-                          />
-                          <div className="text-right shrink-0">
-                            <p className="text-sm">{acct.balance != null ? formatCurrencyExact(acct.balance) : "—"}</p>
+                </div>
+            ))}
+
+            {(() => {
+              if (simplefin.accounts.length === 0) {
+                return simplefin.connections.length > 0 ? (
+                  <p className="text-xs text-muted-foreground">No accounts yet — try syncing.</p>
+                ) : null
+              }
+              const isLinked = (a: SimpleFinAccount) => !!(a.linked_debt_id || a.linked_savings_account_id)
+              const toLink = simplefin.accounts.filter(a => !isLinked(a) && a.sync_enabled)
+              const linked = simplefin.accounts.filter(isLinked)
+              const skipped = simplefin.accounts.filter(a => !isLinked(a) && !a.sync_enabled)
+              return (
+                <div className="space-y-2">
+                  <FoldGroup title="To link" count={toLink.length} defaultOpen>
+                    {toLink.map(acct => renderAccountRow(acct, true))}
+                  </FoldGroup>
+                  <FoldGroup title="Linked" count={linked.length}>
+                    {linked.map(acct => renderAccountRow(acct, false))}
+                  </FoldGroup>
+                  <FoldGroup title="Skipped" count={skipped.length}>
+                    {skipped.map(acct => (
+                      <div key={acct.id} className="flex items-center justify-between gap-2 border-t border-input pt-2 first:border-t-0 first:pt-0">
+                        <div className="min-w-0">
+                          <p className="text-sm truncate">
+                            {accountLabel(acct)}
                             {acct.org_name && (
-                              <p className="text-xs text-muted-foreground truncate max-w-[140px]">{acct.org_name}</p>
+                              <span className="text-muted-foreground"> · {acct.org_name}</span>
                             )}
-                          </div>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {acct.balance != null ? formatCurrencyExact(acct.balance) : "—"}
+                          </p>
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <select
-                            value={acct.account_kind ?? "other"}
-                            onChange={(e) => handleKindChange(acct, e.target.value as SimpleFinAccountKind)}
-                            className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground sm:w-[130px]"
-                          >
-                            <option value="checking">Checking</option>
-                            <option value="savings">Savings</option>
-                            <option value="credit_card">Credit card</option>
-                            <option value="loan">Loan</option>
-                            <option value="other">Other</option>
-                          </select>
-                          <select
-                            value={
-                              acct.linked_debt_id
-                                ? `debt:${acct.linked_debt_id}`
-                                : acct.linked_savings_account_id
-                                  ? `cash:${acct.linked_savings_account_id}`
-                                  : ""
-                            }
-                            onChange={(e) => handleLinkChange(acct, e.target.value)}
-                            className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground flex-1 min-w-0"
-                          >
-                            <option value="">Not linked to Ember</option>
-                            <optgroup label="Debts">
-                              {debts.map(d => (
-                                <option key={d.id} value={`debt:${d.id}`}>
-                                  {d.name}
-                                </option>
-                              ))}
-                              <option value="new-debt">+ New debt from this account…</option>
-                            </optgroup>
-                            <optgroup label="Cash accounts">
-                              {cashAccounts.map(c => (
-                                <option key={c.id} value={`cash:${c.id}`}>
-                                  {c.name} ({c.kind === "checking" ? "checking" : "savings"})
-                                </option>
-                              ))}
-                              <option value="new-checking">+ New checking account</option>
-                              <option value="new-savings">+ New savings account</option>
-                            </optgroup>
-                          </select>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs shrink-0"
+                          onClick={() => handleSkipChange(acct, false)}
+                        >
+                          Restore
+                        </Button>
                       </div>
                     ))}
-                    {connAccounts.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        No accounts yet — try syncing.
-                      </p>
-                    )}
-                  </div>
+                  </FoldGroup>
                 </div>
               )
-            })}
+            })()}
 
             {simplefin.connections.length > 0 && (
               <div className="flex items-center gap-2">

@@ -80,11 +80,22 @@ export function useSimpleFin() {
     await fetchAll()
   }
 
+  // "Skipped" in the UI: the sync still records the balance but the account
+  // is excluded from linking and tucked away
+  const setAccountSkipped = async (accountId: string, skipped: boolean) => {
+    const { error } = await supabase
+      .from("simplefin_accounts")
+      .update({ sync_enabled: !skipped })
+      .eq("id", accountId)
+    if (error) throw error
+    await fetchAll()
+  }
+
   const disconnect = async (connectionId: string) => {
     const { error } = await supabase.from("simplefin_connections").delete().eq("id", connectionId)
     if (error) throw error
     await fetchAll()
   }
 
-  return { connections, accounts, loading, connect, syncNow, linkAccount, updateAccountMeta, disconnect, refresh: fetchAll }
+  return { connections, accounts, loading, connect, syncNow, linkAccount, updateAccountMeta, setAccountSkipped, disconnect, refresh: fetchAll }
 }
