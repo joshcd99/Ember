@@ -88,7 +88,7 @@ const strategyMeta: Record<DisplayStrategy, { label: string; description: string
   },
   minimums: {
     label: "Minimums Only",
-    description: "Pay only what's required. A slow smolder.",
+    description: "Keep paying what you pay now — no extra. A slow smolder.",
     icon: <MinusCircle className="h-5 w-5" />,
     color: STRATEGY_COLORS.minimums,
   },

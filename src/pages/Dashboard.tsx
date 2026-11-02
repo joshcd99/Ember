@@ -60,7 +60,8 @@ export function Dashboard() {
   const monthlyMinimums = getMonthlyMinimums(debts)
   const cashFlow = monthlyIncome - monthlyBillsTotal - monthlyMinimums
 
-  const savedStrategy = (householdSettings?.preferred_strategy ?? "minimums") as Strategy
+  // Default matches the Debts page so both surfaces project the same plan
+  const savedStrategy = (householdSettings?.preferred_strategy ?? "avalanche") as Strategy
   const savedExtraType = householdSettings?.extra_payment_type ?? "fixed"
   const savedExtraAmount = householdSettings?.extra_payment_amount ?? 0
   const extraMonthly = savedExtraType === "percent_of_free_cash"

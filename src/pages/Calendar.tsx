@@ -48,7 +48,7 @@ export function Calendar() {
   // Compute per-debt payoff dates from saved strategy
   const debtPayoffDates = useMemo(() => {
     if (debts.length === 0) return new Map<string, Date>()
-    const savedStrategy = (householdSettings?.preferred_strategy ?? "minimums") as Strategy
+    const savedStrategy = (householdSettings?.preferred_strategy ?? "avalanche") as Strategy
     const savedExtraType = householdSettings?.extra_payment_type ?? "fixed"
     const savedExtraAmount = householdSettings?.extra_payment_amount ?? 0
     const cashFlow = Math.max(0, getMonthlyIncome(incomeSources) - getMonthlyBills(bills) - getMonthlyMinimums(debts))

@@ -137,7 +137,10 @@ export function calculatePayoff(
       endMonth: paymentPeriodsLeftFor(p, now),
     }))
 
-    minimums[d.id] = d.minimum_payment
+    // Projections follow what's actually being paid (cash flow and the
+    // calendar already do) — the "Actually Paying" override wins over the
+    // required minimum
+    minimums[d.id] = d.actual_payment ?? d.minimum_payment
   }
 
   // RAP (Repayment Assistance Plan) units: grouped debts share one servicer
