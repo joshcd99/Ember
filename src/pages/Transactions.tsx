@@ -9,6 +9,7 @@ import { formatCurrencyExact, cn } from "@/lib/utils"
 import type { Transaction, TransactionType } from "@/types/database"
 import { History, ArrowDownLeft, ArrowUpRight, CreditCard, Landmark } from "lucide-react"
 import { RecurringScanner } from "@/components/RecurringScanner"
+import { DailyReview } from "@/components/DailyReview"
 
 const PAGE_SIZE = 50
 
@@ -101,6 +102,8 @@ export function Transactions() {
         </div>
         <RecurringScanner />
       </div>
+
+      <DailyReview />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
