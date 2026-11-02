@@ -64,6 +64,13 @@ export interface Debt {
   // Free-text owner label (member name or "Joint"); null = unspecified
   owner?: string | null
   notes?: string | null
+  // Debts sharing a group_name display as one combined card/payment
+  // (e.g. federal student loans billed together by one servicer)
+  group_name?: string | null
+  // "rap" = federal Repayment Assistance Plan: unpaid interest is waived,
+  // principal drops by at least min($50, payment) monthly, forgiveness
+  // after 360 qualifying payments. null/undefined = standard amortization.
+  payment_plan?: "rap" | null
 }
 
 export interface IncomeSource {

@@ -20,7 +20,7 @@ export interface PayoffResult {
   paidOff: boolean
   payoffDate: Date
   timeline: MonthSnapshot[]
-  debtPayoffOrder: { id: string; name: string; debtType: DebtType; month: number }[]
+  debtPayoffOrder: { id: string; name: string; debtType: DebtType; month: number; forgiven?: boolean }[]
   /** Month index when the last debt of each type reaches zero */
   categoryPayoffMonths: Record<string, number>
 }
@@ -42,11 +42,16 @@ function isAtRiskDeferredPromo(d: Debt): boolean {
 export function sortDebts(debts: Debt[], strategy: Strategy, customOrder?: string[]): Debt[] {
   const sorted = [...debts]
 
+  // RAP waives unpaid interest, so extra dollars on a RAP loan barely change
+  // what interest you actually pay — avalanche treats them as ~0% and sends
+  // extra money to debts where it genuinely compounds
+  const effectiveRate = (d: Debt) => d.payment_plan === "rap" ? 0 : d.interest_rate
+
   // Base sort per strategy
   let strategySorted: Debt[]
   switch (strategy) {
     case "avalanche":
-      strategySorted = sorted.sort((a, b) => b.interest_rate - a.interest_rate)
+      strategySorted = sorted.sort((a, b) => effectiveRate(b) - effectiveRate(a))
       break
     case "snowball":
       strategySorted = sorted.sort((a, b) => a.current_balance - b.current_balance)
@@ -135,6 +140,16 @@ export function calculatePayoff(
     minimums[d.id] = d.minimum_payment
   }
 
+  // RAP (Repayment Assistance Plan) units: grouped debts share one servicer
+  // payment, so the min($50, paid) principal-reduction floor applies once
+  // per group; an ungrouped RAP debt is its own unit
+  const rapUnit: Record<string, string> = {}
+  for (const d of debts) {
+    if (d.payment_plan === "rap") rapUnit[d.id] = d.group_name?.trim() || d.id
+  }
+  const RAP_FORGIVENESS_MONTHS = 360
+  const forgivenIds = new Set<string>()
+
   // Map debt id → debt_type for grouping
   const debtTypeMap: Record<string, DebtType> = {}
   for (const d of debts) {
@@ -178,9 +193,16 @@ export function calculatePayoff(
     // Accrue interest: promo segments at their own APRs while active, the
     // rest of the balance at the regular rate. Paused entirely during a
     // non-accruing deferment (e.g. subsidized loans).
+    const rapAccrued: Record<string, number> = {}
     for (const id of Object.keys(balances)) {
       if (balances[id] > 0) {
         if (month <= defermentEndMonths[id] && !defermentAccrues[id]) continue
+        if (rapUnit[id]) {
+          // RAP: interest accrues but never capitalizes — whatever the
+          // payment doesn't cover is waived, so the balance can't grow
+          rapAccrued[id] = balances[id] * regularRates[id]
+          continue
+        }
         const segs = promoSegs[id].filter(s => month <= s.endMonth)
         const segTotal = segs.reduce((s, seg) => s + seg.balance, 0)
         // When the balance has been paid below the promo total, scale the
@@ -195,11 +217,27 @@ export function calculatePayoff(
     }
 
     // Pay minimums on all debts (none required while a debt is in deferment)
+    const unitPaid: Record<string, number> = {}
+    const unitPrincipal: Record<string, number> = {}
     let extraAvailable = strategy === "minimums" ? 0 : extraMonthly
     for (const id of Object.keys(balances)) {
       if (balances[id] > 0 && month > defermentEndMonths[id]) {
-        const payment = Math.min(balances[id], minimums[id])
-        balances[id] -= payment
+        if (rapUnit[id]) {
+          // RAP payment covers this month's interest first; only the rest
+          // touches principal (unpaid interest is waived, not added)
+          const accrued = rapAccrued[id] ?? 0
+          const payment = Math.min(minimums[id], balances[id] + accrued)
+          const interestPaid = Math.min(payment, accrued)
+          totalInterest += interestPaid
+          const principal = payment - interestPaid
+          balances[id] = Math.max(0, balances[id] - principal)
+          const u = rapUnit[id]
+          unitPaid[u] = (unitPaid[u] ?? 0) + payment
+          unitPrincipal[u] = (unitPrincipal[u] ?? 0) + principal
+        } else {
+          const payment = Math.min(balances[id], minimums[id])
+          balances[id] -= payment
+        }
       }
     }
 
@@ -210,6 +248,36 @@ export function calculatePayoff(
           const payment = Math.min(balances[d.id], extraAvailable)
           balances[d.id] -= payment
           extraAvailable -= payment
+          const u = rapUnit[d.id]
+          if (u) {
+            unitPaid[u] = (unitPaid[u] ?? 0) + payment
+            unitPrincipal[u] = (unitPrincipal[u] ?? 0) + payment
+          }
+        }
+      }
+    }
+
+    // RAP principal match: the government tops up each unit's principal
+    // reduction to min($50, amount paid) in any month a payment was made
+    for (const u of new Set(Object.values(rapUnit))) {
+      const paid = unitPaid[u] ?? 0
+      if (paid <= 0) continue
+      let subsidy = Math.max(0, Math.min(50, paid) - (unitPrincipal[u] ?? 0))
+      for (const id of Object.keys(rapUnit)) {
+        if (subsidy <= 0) break
+        if (rapUnit[id] !== u || balances[id] <= 0) continue
+        const cut = Math.min(balances[id], subsidy)
+        balances[id] -= cut
+        subsidy -= cut
+      }
+    }
+
+    // RAP forgiveness: whatever remains after 360 qualifying payments is wiped
+    if (month >= RAP_FORGIVENESS_MONTHS) {
+      for (const id of Object.keys(rapUnit)) {
+        if (balances[id] > 0) {
+          balances[id] = 0
+          forgivenIds.add(id)
         }
       }
     }
@@ -221,7 +289,7 @@ export function calculatePayoff(
         !debtPayoffOrder.find(p => p.id === d.id)
       ) {
         balances[d.id] = 0
-        debtPayoffOrder.push({ id: d.id, name: d.name, debtType: debtTypeMap[d.id], month })
+        debtPayoffOrder.push({ id: d.id, name: d.name, debtType: debtTypeMap[d.id], month, forgiven: forgivenIds.has(d.id) || undefined })
 
         // Snowball / avalanche: freed-up minimum rolls into extra
         if (strategy !== "minimums") {
@@ -267,8 +335,11 @@ export function getHighestImpactAction(debts: Debt[]): {
   extraAmount: number
   interestSaved: number
 } | null {
-  // Paying extra on a paused-interest deferment saves nothing right now
-  const candidates = debts.filter(d => !(isInDeferment(d) && d.deferment_interest_accrues === false))
+  // Paying extra on a paused-interest deferment saves nothing right now;
+  // same for RAP loans, where unpaid interest is waived anyway
+  const candidates = debts.filter(d =>
+    !(isInDeferment(d) && d.deferment_interest_accrues === false) && d.payment_plan !== "rap"
+  )
   if (candidates.length === 0) return null
 
   // The highest-rate debt saves the most interest per dollar applied

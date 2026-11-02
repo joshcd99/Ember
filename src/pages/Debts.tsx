@@ -50,6 +50,8 @@ import {
   promoMonthsLeft,
 } from "@/lib/promo-engine"
 import { computeInterestSavings } from "@/lib/interest-savings"
+import { splitByGroup, type DebtGroup } from "@/lib/debt-groups"
+import { DebtGroupCard } from "@/components/DebtGroupCard"
 import type { Debt, DebtType, ExtraPaymentType } from "@/types/database"
 
 /** 3-tier APR badge: >15% red, 7-15% neutral, <7% green */
@@ -621,9 +623,18 @@ export function Debts() {
         ))}
       </div>
 
-      {/* Debt cards */}
+      {/* Debt cards — debts sharing a group render as one combined card */}
       {(() => {
+        const { ungrouped, groups } = splitByGroup(debts)
         const debtProgress = (d: Debt) => d.starting_balance > 0 ? (d.starting_balance - d.current_balance) / d.starting_balance : 0
+        const groupDominantType = (g: DebtGroup): DebtType => {
+          const counts = new Map<DebtType, number>()
+          for (const d of g.debts) {
+            const t = (d.debt_type ?? "other") as DebtType
+            counts.set(t, (counts.get(t) ?? 0) + 1)
+          }
+          return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+        }
 
         if (debtSort === "category") {
           const typeOrder = Object.keys(DEBT_TYPE_META) as DebtType[]
@@ -632,11 +643,12 @@ export function Debts() {
               type,
               meta: DEBT_TYPE_META[type],
               color: DEBT_TYPE_CHART_COLORS[type],
-              debts: debts
+              debts: ungrouped
                 .filter(d => (d.debt_type ?? "other") === type)
                 .sort((a, b) => a.name.localeCompare(b.name)),
+              groups: groups.filter(g => groupDominantType(g) === type),
             }))
-            .filter(g => g.debts.length > 0)
+            .filter(g => g.debts.length > 0 || g.groups.length > 0)
 
           return grouped.map((group, gi) => (
             <div key={group.type} className="space-y-3">
@@ -646,27 +658,52 @@ export function Debts() {
                 <div className="flex-1 border-t border-border" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start grid-flow-dense">
+                {group.groups.map(g => <DebtGroupCard key={g.name} group={g} onEditDebt={openEdit} />)}
                 {group.debts.map(debt => renderDebtCard(debt, openEdit))}
               </div>
             </div>
           ))
         }
 
-        const sorted = [...debts].sort((a, b) => {
+        // Other sorts: groups participate as one unit, sorted by their aggregates
+        type CardItem = { kind: "debt"; debt: Debt } | { kind: "group"; group: DebtGroup }
+        const items: CardItem[] = [
+          ...groups.map(group => ({ kind: "group" as const, group })),
+          ...ungrouped.map(debt => ({ kind: "debt" as const, debt })),
+        ]
+        const keyOf = (item: CardItem) => item.kind === "group"
+          ? {
+              name: item.group.name,
+              balance: item.group.totalBalance,
+              progress: item.group.totalStarting > 0 ? (item.group.totalStarting - item.group.totalBalance) / item.group.totalStarting : 0,
+              rate: item.group.weightedApr,
+              owner: item.group.owner,
+            }
+          : {
+              name: item.debt.name,
+              balance: item.debt.current_balance,
+              progress: debtProgress(item.debt),
+              rate: item.debt.interest_rate,
+              owner: item.debt.owner,
+            }
+        const sorted = items.sort((a, b) => {
+          const ka = keyOf(a), kb = keyOf(b)
           switch (debtSort) {
-            case "name": return a.name.localeCompare(b.name)
-            case "balance": return b.current_balance - a.current_balance
-            case "progress": return debtProgress(b) - debtProgress(a)
-            case "rate": return b.interest_rate - a.interest_rate
+            case "name": return ka.name.localeCompare(kb.name)
+            case "balance": return kb.balance - ka.balance
+            case "progress": return kb.progress - ka.progress
+            case "rate": return kb.rate - ka.rate
             // Unowned debts sort last
-            case "owner": return (a.owner ?? "￿").localeCompare(b.owner ?? "￿") || a.name.localeCompare(b.name)
+            case "owner": return (ka.owner ?? "￿").localeCompare(kb.owner ?? "￿") || ka.name.localeCompare(kb.name)
             default: return 0
           }
         })
 
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start grid-flow-dense">
-            {sorted.map(debt => renderDebtCard(debt, openEdit))}
+            {sorted.map(item => item.kind === "group"
+              ? <DebtGroupCard key={item.group.name} group={item.group} onEditDebt={openEdit} />
+              : renderDebtCard(item.debt, openEdit))}
           </div>
         )
       })()}
@@ -806,21 +843,45 @@ export function Debts() {
                     <div className="pt-2 border-t border-border mt-2">
                       <p className="text-xs text-muted-foreground mb-2">Payoff order:</p>
                       <div className="space-y-2">
-                        {result.debtPayoffOrder.map((d, i) => {
-                          const debt = debts.find(db => db.id === d.id)
-                          const payoffDate = new Date()
-                          payoffDate.setMonth(payoffDate.getMonth() + d.month)
-                          const dateLabel = payoffDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })
-                          return (
-                            <div key={d.id}>
-                              <p className="text-xs font-medium">{i + 1}. {d.name}</p>
-                              <p className="text-[10px] text-muted-foreground ml-3.5">
-                                {dateLabel}
-                                {debt && <> · {formatPercent(debt.interest_rate)} · {formatCurrency(debt.current_balance)}</>}
-                              </p>
-                            </div>
-                          )
-                        })}
+                        {(() => {
+                          // Consecutive loans from the same group collapse to one row
+                          type OrderRow = { key: string; label: string; month: number; count: number; debt?: Debt; balance: number; forgiven?: boolean }
+                          const rows: OrderRow[] = []
+                          for (const d of result.debtPayoffOrder) {
+                            const debt = debts.find(db => db.id === d.id)
+                            const g = debt?.group_name?.trim()
+                            const last = rows[rows.length - 1]
+                            if (g && last && last.key === `group:${g}`) {
+                              last.month = Math.max(last.month, d.month)
+                              last.count++
+                              last.balance += debt?.current_balance ?? 0
+                              last.forgiven = last.forgiven || d.forgiven
+                            } else if (g) {
+                              rows.push({ key: `group:${g}`, label: g, month: d.month, count: 1, balance: debt?.current_balance ?? 0, forgiven: d.forgiven })
+                            } else {
+                              rows.push({ key: d.id, label: d.name, month: d.month, count: 1, debt, balance: debt?.current_balance ?? 0, forgiven: d.forgiven })
+                            }
+                          }
+                          return rows.map((row, i) => {
+                            const payoffDate = new Date()
+                            payoffDate.setMonth(payoffDate.getMonth() + row.month)
+                            const dateLabel = payoffDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                            return (
+                              <div key={row.key}>
+                                <p className="text-xs font-medium">
+                                  {i + 1}. {row.label}{row.count > 1 ? ` (${row.count} loans)` : ""}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground ml-3.5">
+                                  {dateLabel}
+                                  {row.debt
+                                    ? <> · {formatPercent(row.debt.interest_rate)} · {formatCurrency(row.debt.current_balance)}</>
+                                    : row.count > 1 && <> · {formatCurrency(row.balance)}</>}
+                                  {row.forgiven && <> · remainder forgiven (RAP)</>}
+                                </p>
+                              </div>
+                            )
+                          })
+                        })()}
                       </div>
                     </div>
                   )}

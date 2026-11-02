@@ -22,6 +22,7 @@ import {
 import { useAppData } from "@/contexts/DataContext"
 import type { DebtPromoInput } from "@/hooks/useData"
 import { OWNER_OPTIONS } from "@/lib/owners"
+import { existingGroupNames } from "@/lib/debt-groups"
 import type { Debt, DebtPromo, DebtType, PromoType } from "@/types/database"
 import { DEBT_TYPE_META } from "@/lib/debt-types"
 import { formatCurrency, cn } from "@/lib/utils"
@@ -91,11 +92,12 @@ interface DebtModalProps {
 }
 
 export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModalProps) {
-  const { addDebt, updateDebt, deleteDebt, saveDebtPromos } = useAppData()
+  const { debts, addDebt, updateDebt, deleteDebt, saveDebtPromos } = useAppData()
   const isEdit = !!debt
 
   const [name, setName] = useState("")
   const [owner, setOwner] = useState("")
+  const [groupName, setGroupName] = useState("")
   const [notes, setNotes] = useState("")
   const [currentBalance, setCurrentBalance] = useState("")
   const [startingBalance, setStartingBalance] = useState("")
@@ -105,6 +107,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
   const [debtType, setDebtType] = useState<DebtType>("other")
   const [actualPayment, setActualPayment] = useState("")
   const [promoDrafts, setPromoDrafts] = useState<PromoDraft[]>([])
+  const [paymentPlan, setPaymentPlan] = useState<"" | "rap">("")
   const [defermentExpanded, setDefermentExpanded] = useState(false)
   const [defermentEndDate, setDefermentEndDate] = useState("")
   const [defermentAccrues, setDefermentAccrues] = useState(true)
@@ -115,6 +118,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
     if (debt) {
       setName(debt.name)
       setOwner(debt.owner ?? "")
+      setGroupName(debt.group_name ?? "")
       setNotes(debt.notes ?? "")
       setDebtType(debt.debt_type ?? "other")
       setCurrentBalance(String(debt.current_balance))
@@ -128,12 +132,14 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
           .sort((a, b) => a.promo_end_date.localeCompare(b.promo_end_date))
           .map(draftFromPromo)
       )
+      setPaymentPlan(debt.payment_plan === "rap" ? "rap" : "")
       setDefermentExpanded(!!debt.deferment_end_date)
       setDefermentEndDate(debt.deferment_end_date ?? "")
       setDefermentAccrues(debt.deferment_interest_accrues ?? true)
     } else {
       setName(initial?.name ?? "")
       setOwner(initial?.owner ?? "")
+      setGroupName(initial?.group_name ?? "")
       setNotes("")
       setDebtType(initial?.debt_type ?? "other")
       setCurrentBalance(initial?.current_balance != null ? String(initial.current_balance) : "")
@@ -143,6 +149,7 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
       setDueDay("")
       setActualPayment("")
       setPromoDrafts([])
+      setPaymentPlan(initial?.payment_plan === "rap" ? "rap" : "")
       setDefermentExpanded(false)
       setDefermentEndDate("")
       setDefermentAccrues(true)
@@ -173,6 +180,10 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
             : {}),
         ...(owner.trim() ? { owner: owner.trim() } : isEdit ? { owner: null } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : isEdit ? { notes: null } : {}),
+        ...(groupName.trim() ? { group_name: groupName.trim() } : isEdit ? { group_name: null } : {}),
+        ...(defermentEligible && paymentPlan
+          ? { payment_plan: paymentPlan }
+          : isEdit ? { payment_plan: null } : {}),
       }
       let savedDebtId: string | null = null
       if (isEdit) {
@@ -251,6 +262,26 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Group: debts sharing a group show as one combined payment */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Group</label>
+            <Input
+              list="debt-group-names"
+              placeholder='Optional — e.g. "Federal Student Loans"'
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+            />
+            <datalist id="debt-group-names">
+              {existingGroupNames(debts).map(g => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
+            <p className="text-xs text-muted-foreground">
+              Debts with the same group name show as one combined card and one
+              combined payment everywhere, while each loan keeps its own rate.
+            </p>
           </div>
 
           {/* Debt type selector */}
@@ -510,6 +541,57 @@ export function DebtModal({ open, onClose, debt, initial, onCreated }: DebtModal
               </div>
             )}
           </div>
+
+          {/* Payment plan — student loans only */}
+          {defermentEligible && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Payment Plan</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentPlan("")}
+                  className={cn(
+                    "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                    paymentPlan === ""
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                  )}
+                >
+                  <div>
+                    <div className="font-medium">Standard</div>
+                    <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                      Normal amortization — unpaid interest grows the balance.
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentPlan("rap")}
+                  className={cn(
+                    "flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors text-left",
+                    paymentPlan === "rap"
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                  )}
+                >
+                  <div>
+                    <div className="font-medium">RAP</div>
+                    <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                      Repayment Assistance Plan: unpaid interest waived, balance never grows.
+                    </div>
+                  </div>
+                </button>
+              </div>
+              {paymentPlan === "rap" && (
+                <p className="text-xs text-muted-foreground">
+                  Projections factor in RAP's rules: interest your payment doesn't
+                  cover is waived, principal drops by at least min($50, payment)
+                  each month (government match), and anything left after 360
+                  qualifying payments is forgiven.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Deferment section — student loans only */}
           {defermentEligible && (

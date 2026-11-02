@@ -4,6 +4,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useAppData } from "@/contexts/DataContext"
 import { getOccurrencesInRange } from "@/lib/recurrence"
 import { calculatePayoff, type Strategy } from "@/lib/payoff-engine"
+import { splitByGroup } from "@/lib/debt-groups"
+import type { Debt } from "@/types/database"
 import { getMonthlyIncome, getMonthlyBills, getMonthlyMinimums } from "@/lib/mock-data"
 import { formatCurrency } from "@/lib/utils"
 import { downloadCSV } from "@/lib/csv"
@@ -63,6 +65,38 @@ export function Calendar() {
     return map
   }, [debts, incomeSources, bills, householdSettings])
 
+  // Grouped debts (one servicer payment across several loans) appear on the
+  // calendar as a single combined payment under the group's name
+  const calendarDebts = useMemo(() => {
+    const { ungrouped, groups } = splitByGroup(debts)
+    const synthetic: Debt[] = groups.map(g => ({
+      ...g.debts[0],
+      id: `group:${g.name}`,
+      name: g.name,
+      due_day: g.dueDay,
+      minimum_payment: g.totalMinimum,
+      actual_payment: Math.abs(g.totalPayment - g.totalMinimum) > 0.005 ? g.totalPayment : null,
+      deferment_end_date: null,
+    }))
+    return [...ungrouped, ...synthetic]
+  }, [debts])
+
+  // A group's payment stops once its last member is projected paid off
+  const calendarPayoffDates = useMemo(() => {
+    const map = new Map(debtPayoffDates)
+    for (const g of splitByGroup(debts).groups) {
+      let latest: Date | null = null
+      let allKnown = true
+      for (const d of g.debts) {
+        const p = debtPayoffDates.get(d.id)
+        if (!p) { allKnown = false; break }
+        if (!latest || p > latest) latest = p
+      }
+      if (allKnown && latest) map.set(`group:${g.name}`, latest)
+    }
+    return map
+  }, [debts, debtPayoffDates])
+
   // Build events map: date string -> events[]
   const eventsMap = useMemo(() => {
     const map = new Map<string, DayEvent[]>()
@@ -94,9 +128,9 @@ export function Calendar() {
     }
 
     // Debt payments (monthly on due_day, stop after projected payoff)
-    for (const debt of debts) {
+    for (const debt of calendarDebts) {
       const dueDay = debt.due_day
-      const payoffDate = debtPayoffDates.get(debt.id)
+      const payoffDate = calendarPayoffDates.get(debt.id)
       for (let m = monthStart.getMonth() - 1; m <= monthStart.getMonth() + 1; m++) {
         const year = monthStart.getFullYear() + Math.floor(m / 12)
         const month = ((m % 12) + 12) % 12
@@ -112,7 +146,7 @@ export function Calendar() {
     }
 
     return map
-  }, [bills, billCategories, incomeSources, debts, calendarStart, calendarEnd, monthStart, debtPayoffDates])
+  }, [bills, billCategories, incomeSources, calendarDebts, calendarStart, calendarEnd, monthStart, calendarPayoffDates])
 
   // Build a full events map from today to the calendar end (for running balance)
   const fullEventsMap = useMemo(() => {
@@ -143,9 +177,9 @@ export function Calendar() {
         map.set(key, existing)
       }
     }
-    for (const debt of debts) {
+    for (const debt of calendarDebts) {
       const dueDay = debt.due_day
-      const payoffDate = debtPayoffDates.get(debt.id)
+      const payoffDate = calendarPayoffDates.get(debt.id)
       // Cover months in the gap
       let m = gapStart.getMonth() + gapStart.getFullYear() * 12
       const mEnd = gapEnd.getMonth() + gapEnd.getFullYear() * 12
@@ -167,7 +201,7 @@ export function Calendar() {
       }
     }
     return map
-  }, [eventsMap, calendarStart, bills, billCategories, incomeSources, debts, debtPayoffDates])
+  }, [eventsMap, calendarStart, bills, billCategories, incomeSources, calendarDebts, calendarPayoffDates])
 
   // Build running balance map from today through the visible calendar
   const balanceMap = useMemo(() => {

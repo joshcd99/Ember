@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAppData } from "@/contexts/DataContext"
 import { getOccurrencesInRange } from "@/lib/recurrence"
+import { splitByGroup } from "@/lib/debt-groups"
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { ChevronDown, ChevronUp, ArrowRight } from "lucide-react"
 import { startOfMonth, endOfMonth, addDays } from "date-fns"
@@ -52,16 +53,29 @@ export function CashFlowRegister() {
       }
     }
 
-    // Debt payments (on due_day; none while the debt is in deferment)
-    for (const debt of debts) {
-      const dueDay = debt.due_day
+    // Debt payments (on due_day; none while the debt is in deferment).
+    // Grouped debts (one servicer payment across several loans) show as
+    // a single combined event.
+    const { ungrouped, groups } = splitByGroup(debts)
+    const maxDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    for (const debt of ungrouped) {
+      const day = Math.min(debt.due_day, maxDay)
       const payment = debt.actual_payment ?? debt.minimum_payment
-      const maxDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-      const day = Math.min(dueDay, maxDay)
       const date = new Date(now.getFullYear(), now.getMonth(), day)
       if (debt.deferment_end_date && date < new Date(debt.deferment_end_date + "T00:00")) continue
       if (date >= monthStart && date < monthEnd) {
         events.push({ date, label: `${debt.name} (payment)`, type: "debt", amount: -payment })
+      }
+    }
+    for (const group of groups) {
+      const day = Math.min(group.dueDay, maxDay)
+      const date = new Date(now.getFullYear(), now.getMonth(), day)
+      const payment = group.debts.reduce((sum, d) => {
+        if (d.deferment_end_date && date < new Date(d.deferment_end_date + "T00:00")) return sum
+        return sum + (d.actual_payment ?? d.minimum_payment)
+      }, 0)
+      if (payment > 0 && date >= monthStart && date < monthEnd) {
+        events.push({ date, label: `${group.name} (payment)`, type: "debt", amount: -payment })
       }
     }
 

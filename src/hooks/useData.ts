@@ -40,6 +40,7 @@ interface DataActions {
   // Debts
   addDebt: (debt: Omit<Debt, "id" | "household_id" | "created_at" | "last_verified_at">) => Promise<Debt | null>
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
+  updateDebtsBulk: (changes: Array<{ id: string; updates: Partial<Debt> }>) => Promise<void>
   deleteDebt: (id: string) => Promise<void>
   // Replaces the debt's promo set: missing rows deleted, rows with ids updated, new rows inserted
   saveDebtPromos: (debtId: string, promos: DebtPromoInput[]) => Promise<void>
@@ -207,6 +208,26 @@ export function useData(): AppData {
     }
     const { error } = await supabase.from("debts").delete().eq("id", id)
     if (error) throw error
+    await fetchAll()
+  }
+
+  // Several per-debt updates with a single refetch (e.g. splitting a
+  // group's combined payment across its member loans)
+  const updateDebtsBulk = async (changes: Array<{ id: string; updates: Partial<Debt> }>) => {
+    if (useMockMode) {
+      setState(s => ({
+        ...s,
+        debts: s.debts.map(d => {
+          const c = changes.find(c => c.id === d.id)
+          return c ? { ...d, ...c.updates } : d
+        }),
+      }))
+      return
+    }
+    for (const c of changes) {
+      const { error } = await supabase.from("debts").update(c.updates).eq("id", c.id)
+      if (error) throw error
+    }
     await fetchAll()
   }
 
@@ -519,6 +540,7 @@ export function useData(): AppData {
     ...state,
     addDebt,
     updateDebt,
+    updateDebtsBulk,
     deleteDebt,
     saveDebtPromos,
     addIncomeSource,
