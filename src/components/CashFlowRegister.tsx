@@ -20,14 +20,14 @@ export function CashFlowRegister() {
   const { bills, incomeSources, debts, transactions, savingsAccount, cashAccounts } = useAppData()
   const [expanded, setExpanded] = useState(false)
 
-  // Checking accounts are the cash anchor when they exist; otherwise fall
-  // back to the savings balance (the app's original behavior)
-  const checkingAccounts = cashAccounts.filter(a => a.kind === "checking")
-  const cashAnchor = checkingAccounts.length > 0
-    ? checkingAccounts.reduce((sum, a) => sum + a.current_balance, 0)
+  // Cash accounts the user marked as counted anchor the register; falls
+  // back to the lone savings balance when no cash accounts exist
+  const countedAccounts = cashAccounts.filter(a => a.include_in_cash_flow !== false)
+  const cashAnchor = cashAccounts.length > 0
+    ? countedAccounts.reduce((sum, a) => sum + a.current_balance, 0)
     : savingsAccount?.current_balance ?? 0
 
-  const hasSavings = (savingsAccount && savingsAccount.current_balance > 0) || checkingAccounts.length > 0
+  const hasSavings = (savingsAccount && savingsAccount.current_balance > 0) || cashAccounts.length > 0
 
   const rows = useMemo(() => {
     const now = new Date()
@@ -94,7 +94,7 @@ export function CashFlowRegister() {
     // Build rows with running balance
     const startingBalance = cashAnchor
     const result: RegisterRow[] = [
-      { date: monthStart, label: "Starting balance", type: "starting", amount: startingBalance, runningBalance: startingBalance },
+      { date: monthStart, label: "Current cash", type: "starting", amount: startingBalance, runningBalance: startingBalance },
     ]
 
     let balance = startingBalance

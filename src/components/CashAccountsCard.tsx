@@ -13,6 +13,15 @@ function AccountRow({ account }: { account: SavingsAccount }) {
   const [draft, setDraft] = useState(account.name)
   const [editingOwner, setEditingOwner] = useState(false)
 
+  const counted = account.include_in_cash_flow !== false
+  const toggleCounted = async () => {
+    try {
+      await updateCashAccount(account.id, { include_in_cash_flow: !counted })
+    } catch (err) {
+      console.error("CashAccountsCard: cash-flow toggle failed", err)
+    }
+  }
+
   const saveOwner = async (value: string) => {
     setEditingOwner(false)
     if (value === (account.owner ?? "")) return
@@ -96,6 +105,20 @@ function AccountRow({ account }: { account: SavingsAccount }) {
               {account.owner || "+ owner"}
             </button>
           )}
+          <button
+            type="button"
+            onClick={toggleCounted}
+            className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+              counted
+                ? "bg-primary/15 text-primary hover:bg-primary/25"
+                : "text-muted-foreground/60 hover:text-muted-foreground border border-dashed border-border"
+            }`}
+            title={counted
+              ? "Counted toward the cash flow balance — click to exclude"
+              : "Not counted toward the cash flow balance — click to include"}
+          >
+            {counted ? "✓ cash flow" : "excluded"}
+          </button>
         </div>
       )}
       <div className="text-right shrink-0">

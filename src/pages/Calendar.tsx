@@ -207,9 +207,9 @@ export function Calendar() {
   const balanceMap = useMemo(() => {
     const map = new Map<string, number>()
     // Checking accounts anchor the running balance when they exist
-    const checkingAccounts = cashAccounts.filter(a => a.kind === "checking")
-    const startBalance = checkingAccounts.length > 0
-      ? checkingAccounts.reduce((sum, a) => sum + a.current_balance, 0)
+    // Counted cash accounts, matching the dashboard register's anchor
+    const startBalance = cashAccounts.length > 0
+      ? cashAccounts.filter(a => a.include_in_cash_flow !== false).reduce((sum, a) => sum + a.current_balance, 0)
       : savingsAccount?.current_balance ?? 0
     const today = startOfDay(new Date())
     const rangeStart = calendarStart <= today ? calendarStart : today

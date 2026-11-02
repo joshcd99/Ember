@@ -205,6 +205,8 @@ export interface SavingsAccount {
   kind: CashAccountKind
   created_at: string
   owner?: string | null
+  // Counted toward the cash-flow register / calendar running balance
+  include_in_cash_flow?: boolean | null
 }
 
 export interface Database {
